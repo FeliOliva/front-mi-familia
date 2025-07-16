@@ -1,0 +1,289 @@
+/* src/views/mobile/RepartidorMovil.css */
+
+.resumen-movil-container {
+  font-family: 'Roboto', sans-serif;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+.resumen-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  background-color: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+}
+
+.header-logo {
+  height: 30px;
+  margin-right: 10px;
+}
+
+.header-brand h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: #333;
+}
+
+.header-user {
+  font-weight: 500;
+  color: #666;
+  font-size: 14px;
+}
+
+.resumen-content {
+  padding: 16px;
+}
+
+.resumen-content h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-size: 20px;
+  color: #333;
+  text-align: center;
+}
+
+.resumen-table-container {
+  overflow-x: auto;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.resumen-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.resumen-table th,
+.resumen-table td {
+  padding: 12px 8px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.resumen-table th {
+  background-color: #f8f9fa;
+  color: #555;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.resumen-table tr:last-child td {
+  border-bottom: none;
+}
+
+.resumen-table tr.venta {
+  background-color: rgba(230, 249, 235, 0.4);
+}
+
+.resumen-table tr.entrega {
+  background-color: rgba(232, 244, 253, 0.4);
+}
+
+.estado-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.resumen-table tr td:nth-child(5) .estado-badge {
+  background-color: #e6f9eb;
+  color: #1e8a3e;
+}
+
+.resumen-table tr td:nth-child(5) .estado-badge:contains("Pendiente") {
+  background-color: #fff8e1;
+  color: #f9a825;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 16px;
+  color: #666;
+}
+
+.error-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 16px;
+  color: #d32f2f;
+  padding: 16px;
+  text-align: center;
+}
+
+.no-data {
+  text-align: center;
+  padding: 24px;
+  color: #666;
+}
+
+/* Estilos para el botón de pago */
+.pago-button {
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.2s;
+}
+
+.pago-button:hover {
+  background-color: #43a047;
+}
+
+.action-cell {
+  text-align: center;
+  min-width: 70px;
+}
+
+/* Saldo card styles */
+.saldo-card {
+  background-color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.saldo-actual {
+  text-align: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eaeaea;
+  margin-bottom: 16px;
+}
+
+.saldo-actual h3 {
+  font-size: 16px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.saldo-monto {
+  font-size: 32px;
+  font-weight: bold;
+  color: #333;
+}
+
+.entregas-historial h3 {
+  font-size: 16px;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+.entregas-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.entrega-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.entrega-item:last-child {
+  border-bottom: none;
+}
+
+.entrega-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.entrega-numero {
+  font-weight: 500;
+  color: #333;
+}
+
+.entrega-fecha {
+  font-size: 12px;
+  color: #999;
+  margin-top: 2px;
+}
+
+.entrega-montos {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.entrega-monto {
+  font-weight: bold;
+  color: #e74c3c; /* Color rojo para indicar dinero que salió */
+}
+
+.entrega-saldo {
+  font-size: 12px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.no-entregas {
+  text-align: center;
+  color: #999;
+  padding: 10px 0;
+}
+
+/* Estilos específicos para pantallas pequeñas */
+@media (max-width: 480px) {
+  .resumen-table th,
+  .resumen-table td {
+    padding: 10px 5px;
+    font-size: 13px;
+  }
+  
+  .resumen-content h2 {
+    font-size: 18px;
+  }
+  
+  /* Ajustar columnas para pantallas muy pequeñas */
+  .resumen-table th:nth-child(3),
+  .resumen-table td:nth-child(3) {
+    max-width: 80px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Ajustar la columna de acción */
+  .resumen-table th:nth-child(5),
+  .resumen-table td:nth-child(5) {
+    width: 50px;
+    padding-left: 2px;
+    padding-right: 2px;
+  }
+
+  /* Ajustar el botón de pago para pantallas pequeñas */
+  .pago-button {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+}

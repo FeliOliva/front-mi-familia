@@ -1,0 +1,198 @@
+.pago-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000; /* Aumentado para asegurar que esté por encima de todo */
+  overflow: hidden;
+}
+
+.pago-modal-content {
+  background-color: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 350px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: slideUp 0.3s ease;
+  position: relative; /* Asegura que esté posicionado correctamente */
+  margin: auto; /* Centra el modal */
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.pago-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #eaeaea;
+}
+
+.pago-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+  font-weight: 600;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #777;
+  padding: 0;
+  line-height: 1;
+}
+
+.pago-modal-body {
+  padding: 16px;
+}
+
+.venta-details {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eaeaea;
+}
+
+.venta-details p {
+  margin: 5px 0;
+}
+
+.monto-total {
+  font-weight: bold;
+  font-size: 16px;
+  margin-left: 5px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: #555;
+  font-weight: 500;
+}
+
+.form-group input[type="number"],
+.form-group select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 16px;
+  appearance: none;
+  background-color: #f9f9f9;
+}
+
+.form-group select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23555' d='M6 9L1 4h10L6 9z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 30px;
+}
+
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+.checkbox-container input {
+  margin-right: 10px;
+  width: 18px;
+  height: 18px;
+}
+
+.label-text {
+  font-size: 15px;
+}
+
+.button-group {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 24px;
+}
+
+.cancel-button,
+.submit-button {
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  flex: 1;
+  font-size: 15px;
+  transition: background-color 0.2s;
+}
+
+.cancel-button {
+  background-color: #f2f2f2;
+  color: #666;
+  margin-right: 10px;
+}
+
+.submit-button {
+  background-color: #4caf50;
+  color: white;
+}
+
+.cancel-button:hover {
+  background-color: #e6e6e6;
+}
+
+.submit-button:hover {
+  background-color: #43a047;
+}
+
+.submit-button:disabled {
+  background-color: #a5d6a7;
+  cursor: not-allowed;
+}
+
+.error-message {
+  color: #d32f2f;
+  font-size: 14px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background-color: #ffebee;
+  border-radius: 4px;
+  border-left: 3px solid #d32f2f;
+}
+
+/* Para dispositivos muy pequeños */
+@media (max-width: 320px) {
+  .button-group {
+    flex-direction: column;
+  }
+  
+  .cancel-button {
+    margin-right: 0;
+    margin-bottom: 10px;
+  }
+}
