@@ -291,6 +291,7 @@ const Ventas = () => {
   };
 
 
+
   useEffect(() => {
     if (hasInputFocus) {
       if (productoBuscado.trim().length >= 0) {
@@ -301,6 +302,7 @@ const Ventas = () => {
       }
     }
   }, [productoBuscado, hasInputFocus]);
+
 
   const agregarProducto = (producto) => {
     if (!cantidad || cantidad <= 0) {
@@ -652,68 +654,68 @@ const Ventas = () => {
 
   // Renderizado de cada producto en el carrito
   const renderCartItem = (item, index) => (
-  <List.Item key={item.id} style={{ padding: "12px" }}>
-    <div style={{ width: "100%" }}>
-      <div
-        style={{
-          fontWeight: "bold",
-          marginBottom: "6px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div style={{ wordBreak: "break-word" }}>{item.nombre}</div>
-        <Button
-          danger
-          size="small"
-          onClick={() => eliminarProducto(index)}
-          icon={<DeleteOutlined />}
+    <List.Item key={item.id} style={{ padding: "12px" }}>
+      <div style={{ width: "100%" }}>
+        <div
+          style={{
+            fontWeight: "bold",
+            marginBottom: "6px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
         >
-          Eliminar
-        </Button>
-      </div>
-
-      <div style={{ color: "#666", marginBottom: "6px" }}>
-        {item.tipoUnidad || "Unidad"} - ${item.precio.toLocaleString("es-AR")}{" "}
-        c/u
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center" }}>
+          <div style={{ wordBreak: "break-word" }}>{item.nombre}</div>
           <Button
+            danger
             size="small"
-            icon={<MinusOutlined />}
-            onClick={() => modificarCantidad(index, -0.5)} // Cambiar incremento
-          />
-          <InputNumber
-            min={0.1}
-            step={0.1}
-            precision={2}
-            value={item.cantidad}
-            onChange={(value) => actualizarCantidad(index, value)}
-            size="small"
-            style={{ width: "80px", margin: "0 4px" }}
-          />
-          <Button
-            size="small"
-            icon={<PlusOutlined />}
-            onClick={() => modificarCantidad(index, 0.5)} // Cambiar incremento
-          />
+            onClick={() => eliminarProducto(index)}
+            icon={<DeleteOutlined />}
+          >
+            Eliminar
+          </Button>
         </div>
-        <div style={{ fontWeight: "bold", color: "#1890ff" }}>
-          ${(item.precio * item.cantidad).toLocaleString("es-AR")}
+
+        <div style={{ color: "#666", marginBottom: "6px" }}>
+          {item.tipoUnidad || "Unidad"} - ${item.precio.toLocaleString("es-AR")}{" "}
+          c/u
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <Button
+              size="small"
+              icon={<MinusOutlined />}
+              onClick={() => modificarCantidad(index, -0.5)} // Cambiar incremento
+            />
+            <InputNumber
+              min={0.1}
+              step={0.1}
+              precision={2}
+              value={item.cantidad}
+              onChange={(value) => actualizarCantidad(index, value)}
+              size="small"
+              style={{ width: "80px", margin: "0 4px" }}
+            />
+            <Button
+              size="small"
+              icon={<PlusOutlined />}
+              onClick={() => modificarCantidad(index, 0.5)} // Cambiar incremento
+            />
+          </div>
+          <div style={{ fontWeight: "bold", color: "#1890ff" }}>
+            ${(item.precio * item.cantidad).toLocaleString("es-AR")}
+          </div>
         </div>
       </div>
-    </div>
-  </List.Item>
-);
+    </List.Item>
+  );
 
   const ventasFiltradas =
     filtroCaja === "todas"
@@ -924,24 +926,24 @@ const Ventas = () => {
                     onChange={(e) => setProductoBuscado(e.target.value)}
                     onFocus={() => {
                       setHasInputFocus(true);
-                      // Disparar búsqueda inmediatamente al hacer focus
+
                       buscarProductos();
-                    }}
-                    onBlur={() => {
-                      // Opcional: ocultar lista después de un delay para permitir clicks
-                      setTimeout(() => setShowProductList(false), 200);
                     }}
                     prefix={<SearchOutlined style={{ color: "#1890ff" }} />}
                     style={{ width: "100%" }}
                     size={isMobile ? "middle" : "large"}
                     allowClear
+                    onClear={() => {
+                      setShowProductList(false);
+                      setHasInputFocus(false);
+                    }}
                   />
                 </Col>
                 <Col span={isMobile ? 8 : 6}>
                   <InputNumber
                     min={0.1}
                     step={0.1}
-                    precision={2} // Permite hasta 2 decimales
+                    precision={2} 
                     value={cantidad}
                     onChange={(value) => setCantidad(value)}
                     addonBefore="Cant."
