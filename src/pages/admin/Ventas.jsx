@@ -152,7 +152,6 @@ const Ventas = () => {
   const [pageSize] = useState(8);
   const [totalVentas, setTotalVentas] = useState(0);
   const [loadingProducts, setLoadingProducts] = useState(false);
-
   // Para la caja
   const [cajas, setCajas] = useState([]);
   const [selectedCaja, setSelectedCaja] = useState(null);
@@ -167,6 +166,8 @@ const Ventas = () => {
 
   // Estado para controlar si mostrar la lista de productos
   const [showProductList, setShowProductList] = useState(false);
+
+  const [hasInputFocus, setHasInputFocus] = useState(false);
 
   // Cargar negocios
   const cargarNegocios = async () => {
@@ -256,17 +257,29 @@ const Ventas = () => {
     cargarCajas();
   }, [currentPage]);
 
+
   const buscarProductos = async () => {
     try {
       setLoadingProducts(true);
       const res = await api("api/getAllProducts");
       const productos = res.products || [];
-      // Filtrar en el frontend por coincidencia de nombre
-      const filtrados = productos.filter(
-        (producto) =>
-          producto.estado === 1 &&
-          producto.nombre.toLowerCase().includes(productoBuscado.toLowerCase())
-      );
+
+      let filtrados;
+
+      if (productoBuscado.trim() === "") {
+        // Si no hay búsqueda, mostrar todos los productos activos ordenados alfabéticamente
+        filtrados = productos
+          .filter(producto => producto.estado === 1)
+          .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+      } else {
+        // Si hay búsqueda, filtrar y ordenar alfabéticamente
+        filtrados = productos
+          .filter(producto =>
+            producto.estado === 1 &&
+            producto.nombre.toLowerCase().includes(productoBuscado.toLowerCase())
+          )
+          .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+      }
 
       setProductosDisponibles(filtrados);
       setShowProductList(filtrados.length > 0);
@@ -277,14 +290,17 @@ const Ventas = () => {
     }
   };
 
+
   useEffect(() => {
-    if (productoBuscado.trim().length >= 2) {
-      buscarProductos();
-    } else {
-      setProductosDisponibles([]);
-      setShowProductList(false);
+    if (hasInputFocus) {
+      if (productoBuscado.trim().length >= 0) {
+        buscarProductos();
+      } else {
+        setProductosDisponibles([]);
+        setShowProductList(false);
+      }
     }
-  }, [productoBuscado]);
+  }, [productoBuscado, hasInputFocus]);
 
   const agregarProducto = (producto) => {
     if (!cantidad || cantidad <= 0) {
@@ -297,7 +313,7 @@ const Ventas = () => {
       // Actualizar la cantidad si ya existe
       const nuevos = productosSeleccionados.map((p) =>
         p.id === producto.id
-          ? { ...p, cantidad: p.cantidad + parseInt(cantidad) }
+          ? { ...p, cantidad: p.cantidad + parseFloat(cantidad) }
           : p
       );
       setProductosSeleccionados(nuevos);
@@ -307,7 +323,7 @@ const Ventas = () => {
         ...productosSeleccionados,
         {
           ...producto,
-          cantidad: parseInt(cantidad),
+          cantidad: parseFloat(cantidad),
           tipoUnidad: producto.tipoUnidad?.tipo || "Unidad",
         },
       ]);
@@ -323,7 +339,7 @@ const Ventas = () => {
 
   const modificarCantidad = (index, incremento) => {
     const nuevos = [...productosSeleccionados];
-    const nuevaCantidad = nuevos[index].cantidad + incremento;
+    const nuevaCantidad = parseFloat((nuevos[index].cantidad + incremento).toFixed(2)); // Redondear a 2 decimales
 
     if (nuevaCantidad <= 0) {
       eliminarProducto(index);
@@ -341,10 +357,9 @@ const Ventas = () => {
     }
 
     const nuevos = [...productosSeleccionados];
-    nuevos[index].cantidad = nuevaCantidad;
+    nuevos[index].cantidad = parseFloat(nuevaCantidad); // Usar parseFloat
     setProductosSeleccionados(nuevos);
   };
-
   const eliminarProducto = (index) => {
     const nuevos = [...productosSeleccionados];
     nuevos.splice(index, 1);
@@ -624,74 +639,81 @@ const Ventas = () => {
           </Space>
         }
       />
-      <Button type="primary" size="small" icon={<PlusOutlined />}>
-        Agregar
+      <Button
+        type="primary"
+        size="small"
+        className={isMobile ? "max-w-16" : ""}
+        icon={<PlusOutlined />}
+      >
+        {!isMobile && "Agregar"}
       </Button>
     </List.Item>
   );
 
   // Renderizado de cada producto en el carrito
   const renderCartItem = (item, index) => (
-    <List.Item key={item.id} style={{ padding: "12px" }}>
-      <div style={{ width: "100%" }}>
-        <div
-          style={{
-            fontWeight: "bold",
-            marginBottom: "6px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
+  <List.Item key={item.id} style={{ padding: "12px" }}>
+    <div style={{ width: "100%" }}>
+      <div
+        style={{
+          fontWeight: "bold",
+          marginBottom: "6px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <div style={{ wordBreak: "break-word" }}>{item.nombre}</div>
+        <Button
+          danger
+          size="small"
+          onClick={() => eliminarProducto(index)}
+          icon={<DeleteOutlined />}
         >
-          <div style={{ wordBreak: "break-word" }}>{item.nombre}</div>
+          Eliminar
+        </Button>
+      </div>
+
+      <div style={{ color: "#666", marginBottom: "6px" }}>
+        {item.tipoUnidad || "Unidad"} - ${item.precio.toLocaleString("es-AR")}{" "}
+        c/u
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center" }}>
           <Button
-            danger
             size="small"
-            onClick={() => eliminarProducto(index)}
-            icon={<DeleteOutlined />}
-          >
-            Eliminar
-          </Button>
+            icon={<MinusOutlined />}
+            onClick={() => modificarCantidad(index, -0.5)} // Cambiar incremento
+          />
+          <InputNumber
+            min={0.1}
+            step={0.1}
+            precision={2}
+            value={item.cantidad}
+            onChange={(value) => actualizarCantidad(index, value)}
+            size="small"
+            style={{ width: "80px", margin: "0 4px" }}
+          />
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => modificarCantidad(index, 0.5)} // Cambiar incremento
+          />
         </div>
-
-        <div style={{ color: "#666", marginBottom: "6px" }}>
-          {item.tipoUnidad || "Unidad"} - ${item.precio.toLocaleString("es-AR")}{" "}
-          c/u
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center" }}>
-            <Button
-              size="small"
-              icon={<MinusOutlined />}
-              onClick={() => modificarCantidad(index, -1)}
-            />
-            <InputNumber
-              min={1}
-              value={item.cantidad}
-              onChange={(value) => actualizarCantidad(index, value)}
-              size="small"
-              style={{ width: "60px", margin: "0 4px" }}
-            />
-            <Button
-              size="small"
-              icon={<PlusOutlined />}
-              onClick={() => modificarCantidad(index, 1)}
-            />
-          </div>
-          <div style={{ fontWeight: "bold", color: "#1890ff" }}>
-            ${(item.precio * item.cantidad).toLocaleString("es-AR")}
-          </div>
+        <div style={{ fontWeight: "bold", color: "#1890ff" }}>
+          ${(item.precio * item.cantidad).toLocaleString("es-AR")}
         </div>
       </div>
-    </List.Item>
-  );
+    </div>
+  </List.Item>
+);
 
   const ventasFiltradas =
     filtroCaja === "todas"
@@ -897,23 +919,36 @@ const Ventas = () => {
               <Row gutter={[8, 8]}>
                 <Col span={isMobile ? 16 : 18}>
                   <Input
-                    placeholder="Buscar producto"
+                    placeholder="Buscar producto o toca para ver todos"
                     value={productoBuscado}
                     onChange={(e) => setProductoBuscado(e.target.value)}
+                    onFocus={() => {
+                      setHasInputFocus(true);
+                      // Disparar búsqueda inmediatamente al hacer focus
+                      buscarProductos();
+                    }}
+                    onBlur={() => {
+                      // Opcional: ocultar lista después de un delay para permitir clicks
+                      setTimeout(() => setShowProductList(false), 200);
+                    }}
                     prefix={<SearchOutlined style={{ color: "#1890ff" }} />}
                     style={{ width: "100%" }}
                     size={isMobile ? "middle" : "large"}
+                    allowClear
                   />
                 </Col>
                 <Col span={isMobile ? 8 : 6}>
                   <InputNumber
-                    min={1}
+                    min={0.1}
+                    step={0.1}
+                    precision={2} // Permite hasta 2 decimales
                     value={cantidad}
                     onChange={(value) => setCantidad(value)}
                     addonBefore="Cant."
                     style={{ width: "100%" }}
                     size={isMobile ? "middle" : "large"}
                   />
+
                 </Col>
               </Row>
 
