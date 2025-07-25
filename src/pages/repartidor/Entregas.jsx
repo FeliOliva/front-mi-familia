@@ -83,7 +83,7 @@ useEffect(() => {
   }
 
   // Crear conexión WebSocket
-  const ws = new WebSocket(`ws://localhost:3001?cajaId=${cajaId}`);
+  const ws = new WebSocket(`wss://api.felipeoliva.site?cajaId=${cajaId}`);
   setSocket(ws);
 
     // Evento de conexión establecida
