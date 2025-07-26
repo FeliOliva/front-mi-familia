@@ -919,7 +919,7 @@ const Ventas = () => {
               style={{ marginBottom: 8 }}
             >
               <Row gutter={[8, 8]}>
-                <Col span={isMobile ? 16 : 18}>
+                <Col span={isMobile ? 22 : 18}>
                   <Input
                     placeholder="Buscar producto o toca para ver todos"
                     value={productoBuscado}
@@ -939,7 +939,7 @@ const Ventas = () => {
                     }}
                   />
                 </Col>
-                <Col span={isMobile ? 8 : 6}>
+                <Col span={isMobile ? 14 : 6}>
                   <InputNumber
                     min={0.1}
                     step={0.1}
