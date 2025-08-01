@@ -36,8 +36,10 @@ import {
   SolutionOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import QRCode from "qrcode";
 
 const { Option } = Select;
 
@@ -57,81 +59,82 @@ const useIsMobile = () => {
 
   return isMobile;
 };
+const generarPDF = async (venta) => {
+  const doc = new jsPDF({
+    orientation: "p",
+    unit: "mm",
+    format: [80, 200],
+  });
 
-const generarPDF = async (record) => {
-  try {
-    const venta = await api(`api/ventas/${record.id}`);
+  let y = 10;
 
-    const detalleHTML = document.createElement("div");
-    detalleHTML.style.padding = "20px";
-    detalleHTML.style.fontSize = "30px";
-    detalleHTML.innerHTML = `
-      <h2>Detalle de Venta</h2>
-      <p><strong>Nro Venta:</strong> ${venta.nroVenta}</p>
-      <p><strong>Negocio:</strong> ${record.negocioNombre}</p>
-      <p><strong>Caja:</strong> ${record.cajaNombre || "No especificada"}</p>
-      <p><strong>Total:</strong> $${venta.total.toLocaleString("es-AR")}</p>
-      <p><strong>Fecha:</strong> ${dayjs(venta.fechaCreacion).format(
-      "DD/MM/YYYY"
-    )}</p>
-      <p><strong>Productos:</strong></p>
-      <ul>
-        ${venta.detalles
-        .map(
-          (d) =>
-            `<li>${d.producto?.nombre || "Producto"} - ${d.cantidad
-            } u. x $${d.precio.toLocaleString("es-AR")} = $${(
-              d.precio * d.cantidad
-            ).toLocaleString("es-AR")}</li>`
-        )
-        .join("")}
-      </ul>
-    `;
+  // Encabezado centrado
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text("VERDULERIA MI FAMILIA", 40, y, { align: "center" });
+  y += 5;
+  doc.text("TICKET DE VENTA", 40, y, { align: "center" });
+  y += 7;
 
-    document.body.appendChild(detalleHTML);
-
-    const canvas = await html2canvas(detalleHTML, {
-      scale: 2, // Mejorar calidad de la imagen
-      width: 800, // Ancho máximo
-      height: 1200, // Alto máximo
-    });
-
-    const imgData = canvas.toDataURL("image/png");
-
-    // Crear el PDF con el tamaño A4
-    const pdf = new jsPDF("p", "pt", "a4");
-
-    // Ajustar imagen al tamaño A4
-    const pdfWidth = 595.28; // Ancho A4 en puntos
-    const pdfHeight = 841.89; // Alto A4 en puntos
-
-    const imgProps = pdf.getImageProperties(imgData);
-    const aspectRatio = imgProps.width / imgProps.height;
-
-    // Escalar la imagen para ajustarse a la página A4
-    let scaledWidth = pdfWidth;
-    let scaledHeight = pdfWidth / aspectRatio;
-
-    // Si la altura escalada excede el tamaño A4, ajustamos la altura
-    if (scaledHeight > pdfHeight) {
-      scaledHeight = pdfHeight;
-      scaledWidth = pdfHeight * aspectRatio;
-    }
-
-    // Calcular la posición para centrar la imagen
-    const marginX = (pdfWidth - scaledWidth) / 2;
-    const marginY = (pdfHeight - scaledHeight) / 2;
-
-    // Agregar la imagen centrada
-    pdf.addImage(imgData, "PNG", marginX, marginY, scaledWidth, scaledHeight);
-
-    // Guardar el PDF
-    pdf.save(`venta-${venta.nroVenta}.pdf`);
-
-    document.body.removeChild(detalleHTML);
-  } catch (error) {
-    message.error("Error al generar el PDF: " + error.message);
+  // Info de venta (más pegado al borde)
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  const fechaVenta = new Date(venta.fechaCreacion).toLocaleString("es-AR");
+  doc.text(`N° Venta: ${venta.nroVenta}`, 7, y); // cambiado de 15 a 7
+  y += 5;
+  doc.text(`Fecha: ${fechaVenta}`, 7, y);
+  y += 5;
+  // Mostrar nombre del negocio
+  if (venta.negocio?.nombre) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(`${venta.negocio.nombre}`, 7, y);
+    y += 5;
   }
+
+  doc.line(5, y, 75, y); // línea horizontal
+  y += 3;
+
+  // Tabla productos
+  const productosData = (venta.detalles || []).map((d) => [
+    d.producto?.nombre || "Producto",
+    parseFloat(d.cantidad) >= 1
+      ? `${parseFloat(d.cantidad).toFixed(0)} kg`
+      : `${(parseFloat(d.cantidad) * 1000).toFixed(0)} g`,
+    `$${(d.precio * parseFloat(d.cantidad)).toFixed(0)}`,
+  ]);
+
+  autoTable(doc, {
+    head: [["PRODUCTO", "CANT.", "SUBTOTAL"]],
+    body: productosData,
+    startY: y,
+    theme: "plain",
+    styles: {
+      fontSize: 9,
+      cellPadding: 1,
+    },
+    headStyles: {
+      fontStyle: "bold",
+      halign: "left",
+    },
+    columnStyles: {
+      0: { cellWidth: 35 },
+      1: { cellWidth: 20 },
+      2: { cellWidth: 20 },
+    },
+    margin: { left: 5, right: 5 },
+  });
+
+  y = doc.lastAutoTable.finalY + 3;
+  doc.line(5, y, 75, y);
+  y += 5;
+
+  // Total en negrita
+  doc.setFont("helvetica", "bold");
+  doc.text(`TOTAL: $${venta.total.toFixed(0)}`, 7, y);
+  y += 10;
+
+  doc.save(`venta-${venta.nroVenta}.pdf`);
 };
 
 const Ventas = () => {
@@ -257,7 +260,6 @@ const Ventas = () => {
     cargarCajas();
   }, [currentPage]);
 
-
   const buscarProductos = async () => {
     try {
       setLoadingProducts(true);
@@ -269,16 +271,23 @@ const Ventas = () => {
       if (productoBuscado.trim() === "") {
         // Si no hay búsqueda, mostrar todos los productos activos ordenados alfabéticamente
         filtrados = productos
-          .filter(producto => producto.estado === 1)
-          .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+          .filter((producto) => producto.estado === 1)
+          .sort((a, b) =>
+            a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
+          );
       } else {
         // Si hay búsqueda, filtrar y ordenar alfabéticamente
         filtrados = productos
-          .filter(producto =>
-            producto.estado === 1 &&
-            producto.nombre.toLowerCase().includes(productoBuscado.toLowerCase())
+          .filter(
+            (producto) =>
+              producto.estado === 1 &&
+              producto.nombre
+                .toLowerCase()
+                .includes(productoBuscado.toLowerCase())
           )
-          .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+          .sort((a, b) =>
+            a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
+          );
       }
 
       setProductosDisponibles(filtrados);
@@ -290,8 +299,6 @@ const Ventas = () => {
     }
   };
 
-
-
   useEffect(() => {
     if (hasInputFocus) {
       if (productoBuscado.trim().length >= 0) {
@@ -302,7 +309,6 @@ const Ventas = () => {
       }
     }
   }, [productoBuscado, hasInputFocus]);
-
 
   const agregarProducto = (producto) => {
     if (!cantidad || cantidad <= 0) {
@@ -341,7 +347,9 @@ const Ventas = () => {
 
   const modificarCantidad = (index, incremento) => {
     const nuevos = [...productosSeleccionados];
-    const nuevaCantidad = parseFloat((nuevos[index].cantidad + incremento).toFixed(2)); // Redondear a 2 decimales
+    const nuevaCantidad = parseFloat(
+      (nuevos[index].cantidad + incremento).toFixed(2)
+    ); // Redondear a 2 decimales
 
     if (nuevaCantidad <= 0) {
       eliminarProducto(index);
@@ -607,7 +615,14 @@ const Ventas = () => {
           <Button
             size={isMobile ? "small" : "middle"}
             icon={<PrinterOutlined />}
-            onClick={() => generarPDF(record)}
+            onClick={async () => {
+              try {
+                const ventaCompleta = await api(`api/ventas/${record.id}`);
+                await generarPDF(ventaCompleta);
+              } catch (error) {
+                message.error("No se pudo generar el PDF: " + error.message);
+              }
+            }}
           >
             {!isMobile && "Imprimir"}
           </Button>
@@ -727,7 +742,9 @@ const Ventas = () => {
       {/* Tarjeta de acciones y filtros */}
       <div className="bg-white rounded-lg shadow-md mb-6">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h2 className="text-lg font-semibold text-gray-900 mb-2 sm:mb-0">Ventas</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2 sm:mb-0">
+            Ventas
+          </h2>
           <Button
             type="primary"
             onClick={() => setModalVisible(true)}
@@ -756,7 +773,9 @@ const Ventas = () => {
 
       <div className="bg-white rounded-lg shadow-md">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Listado de Ventas</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Listado de Ventas
+          </h2>
         </div>
         <div className="overflow-x-auto px-4 py-4">
           <Table
@@ -943,14 +962,13 @@ const Ventas = () => {
                   <InputNumber
                     min={0.1}
                     step={0.1}
-                    precision={2} 
+                    precision={2}
                     value={cantidad}
                     onChange={(value) => setCantidad(value)}
                     addonBefore="Cant."
                     style={{ width: "100%" }}
                     size={isMobile ? "middle" : "large"}
                   />
-
                 </Col>
               </Row>
 
