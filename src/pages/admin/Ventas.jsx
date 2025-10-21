@@ -60,79 +60,106 @@ const useIsMobile = () => {
   return isMobile;
 };
 const generarPDF = async (venta) => {
+  const detalles = Array.isArray(venta.detalles) ? venta.detalles : [];
+  const n = detalles.length;
+  const altoBase = 70,
+    altoPorFila = 6,
+    bufferFinal = 35;
+  const altoPagina = Math.max(200, altoBase + n * altoPorFila + bufferFinal);
+
   const doc = new jsPDF({
     orientation: "p",
     unit: "mm",
-    format: [80, 200],
+    format: [80, altoPagina],
   });
+  const nf = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
+  let y = 8;
+  // ✅ toma String ISO o Date y se queda con YYYY-MM-DD
+  const toISODate = (v) => {
+    if (!v) return "";
+    const s = typeof v === "string" ? v : new Date(v).toISOString();
+    // s: "2025-10-09T18:28:01.609Z" -> nos quedamos con "2025-10-09"
+    return s.slice(0, 10);
+  };
+  // Formato DD/MM/YYYY
+  const isoDate = toISODate(venta.fechaCreacion); // "2025-10-09"
+  const [yyyy, mm, dd] = isoDate ? isoDate.split("-") : ["", "", ""];
+  const fechaSolo = isoDate ? `${dd}/${mm}/${yyyy}` : "";
 
-  let y = 10;
-
-  // Encabezado centrado
-  doc.setFontSize(12);
+  // Encabezado
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
   doc.text("VERDULERIA MI FAMILIA", 40, y, { align: "center" });
   y += 5;
+  doc.setFontSize(10);
   doc.text("TICKET DE VENTA", 40, y, { align: "center" });
-  y += 7;
+  y += 6;
 
-  // Info de venta (más pegado al borde)
-  doc.setFontSize(9);
+  // Info
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
   const fechaVenta = new Date(venta.fechaCreacion).toLocaleString("es-AR");
-  doc.text(`N° Venta: ${venta.nroVenta}`, 7, y); // cambiado de 15 a 7
-  y += 5;
-  doc.text(`Fecha: ${fechaVenta}`, 7, y);
-  y += 5;
-  // Mostrar nombre del negocio
-  if (venta.negocio?.nombre) {
+  doc.text(`N° Venta: ${venta.nroVenta}`, 6, y);
+  y += 4.2;
+  if (fechaSolo) {
+    doc.text(`Fecha: ${fechaSolo}`, 6, y);
+    y += 4.2;
+  }
+  if (venta.negocio?.nombre || venta.negocioNombre) {
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text(`${venta.negocio.nombre}`, 7, y);
-    y += 5;
+    doc.text(String(venta.negocio?.nombre ?? venta.negocioNombre), 6, y);
+    y += 4.2;
+    doc.setFont("helvetica", "normal");
   }
 
-  doc.line(5, y, 75, y); // línea horizontal
-  y += 3;
+  // Línea
+  doc.setLineWidth(0.2);
+  doc.line(4, y, 76, y);
+  y += 2.5;
 
-  // Tabla productos
-  const productosData = (venta.detalles || []).map((d) => [
-    d.producto?.nombre || "Producto",
-    parseFloat(d.cantidad) >= 1
-      ? `${parseFloat(d.cantidad).toFixed(0)} kg`
-      : `${(parseFloat(d.cantidad) * 1000).toFixed(0)} g`,
-    `$${(d.precio * parseFloat(d.cantidad)).toFixed(0)}`,
-  ]);
+  // Tabla productos — usa cantidadConUnidad si está
+  const productosData = detalles.map((d) => {
+    const cant = d.cantidadConUnidad ?? String(d.cantidad ?? "");
+    const subtotal = `$${nf.format((d.precio || 0) * Number(d.cantidad || 0))}`;
+    return [d.producto?.nombre || "Producto", cant, subtotal];
+  });
 
   autoTable(doc, {
     head: [["PRODUCTO", "CANT.", "SUBTOTAL"]],
     body: productosData,
     startY: y,
     theme: "plain",
+    margin: { left: 4, right: 4 },
+    tableWidth: 72,
     styles: {
-      fontSize: 9,
-      cellPadding: 1,
+      font: "helvetica",
+      fontSize: 8,
+      cellPadding: 0.8,
+      lineHeight: 0.95,
+      overflow: "linebreak",
     },
-    headStyles: {
-      fontStyle: "bold",
-      halign: "left",
-    },
+    headStyles: { fontStyle: "bold", textColor: 20 },
     columnStyles: {
-      0: { cellWidth: 35 },
-      1: { cellWidth: 20 },
-      2: { cellWidth: 20 },
+      0: { cellWidth: 36 },
+      1: { cellWidth: 16 },
+      2: { cellWidth: 20, halign: "right" },
     },
-    margin: { left: 5, right: 5 },
   });
 
   y = doc.lastAutoTable.finalY + 3;
-  doc.line(5, y, 75, y);
-  y += 5;
 
-  // Total en negrita
+  // Total + buffer
+  doc.line(4, y, 76, y);
+  y += 5;
   doc.setFont("helvetica", "bold");
-  doc.text(`TOTAL: $${venta.total.toFixed(0)}`, 7, y);
+  doc.setFontSize(10);
+  doc.text(`TOTAL: $${nf.format(venta.total || 0)}`, 76 - 4, y, {
+    align: "right",
+  });
   y += 10;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(" ", 6, y + bufferFinal);
 
   doc.save(`venta-${venta.nroVenta}.pdf`);
 };
@@ -498,107 +525,84 @@ const Ventas = () => {
   };
 
   // Ver detalle de venta
-  const handleVerDetalle = async (record) => {
-    try {
-      const venta = await api(`api/ventas/${record.id}`);
+  const handleVerDetalle = (record) => {
+    const venta = record; // ya tiene cantidadConUnidad
 
-      setDetalleVenta(venta);
-      setModalTitle("Detalle de Venta");
-      setModalContent(
-        <div className="text-sm">
-          <p>
-            <strong>Nro Venta:</strong> {venta.nroVenta}
-          </p>
-          <p>
-            <strong>Negocio:</strong> {record.negocioNombre}
-          </p>
-          <p>
-            <strong>Caja:</strong> {record.cajaNombre || "No especificada"}
-          </p>
-          <p>
-            <strong>Total:</strong> ${venta.total.toLocaleString("es-AR")}
-          </p>
-          <p>
-            <strong>Fecha:</strong>{" "}
-            {dayjs(venta.fechaCreacion).format("DD/MM/YYYY")}
-          </p>
-          <p>
-            <strong>Productos:</strong>
-          </p>
-          <ul className="list-disc pl-5">
-            {venta.detalles.map((d) => (
-              <li key={d.id} className="mb-1">
-                {d.producto?.nombre || "Producto"} - {d.cantidad} u. x $
-                {d.precio.toLocaleString("es-AR")} = $
-                {(d.precio * d.cantidad).toLocaleString("es-AR")}
-              </li>
-            ))}
-          </ul>
-        </div>
-      );
+    setModalTitle("Detalle de Venta");
+    setModalContent(
+      <div className="text-sm">
+        <p>
+          <strong>Nro Venta:</strong> {venta.nroVenta}
+        </p>
+        <p>
+          <strong>Negocio:</strong> {venta.negocioNombre}
+        </p>
+        <p>
+          <strong>Caja:</strong> {venta.cajaNombre || "No especificada"}
+        </p>
+        <p>
+          <strong>Total:</strong> ${Number(venta.total).toLocaleString("es-AR")}
+        </p>
+        <p>
+          <strong>Fecha:</strong>{" "}
+          {dayjs(venta.fechaCreacion).format("DD/MM/YYYY")}
+        </p>
 
-      setDetalleModalVisible(true);
-    } catch (error) {
-      message.error(
-        "Error al cargar los detalles de la venta: " + error.message
-      );
-    }
+        <p>
+          <strong>Productos:</strong>
+        </p>
+        <ul className="list-disc pl-5">
+          {venta.detalles.map((d) => (
+            <li key={d.id} className="mb-1">
+              {d.producto?.nombre || "Producto"} - {d.cantidadConUnidad} x $
+              {Number(d.precio).toLocaleString("es-AR")} = $
+              {(Number(d.precio) * Number(d.cantidad || 0)).toLocaleString(
+                "es-AR"
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+
+    setDetalleModalVisible(true);
   };
 
   const columns = [
-    {
-      title: "Nro. Venta",
-      dataIndex: "nroVenta",
-      key: "nroVenta",
-    },
-    {
-      title: "Negocio",
-      dataIndex: "negocioNombre",
-      key: "negocioNombre",
-      responsive: ["sm"],
-    },
-    {
-      title: "Caja",
-      dataIndex: "cajaNombre",
-      key: "cajaNombre",
-      responsive: ["md"],
-    },
+    { title: "Nro. Venta", dataIndex: "nroVenta", key: "nroVenta" },
+    { title: "Negocio", dataIndex: "negocioNombre", key: "negocioNombre" },
+    { title: "Caja", dataIndex: "cajaNombre", key: "cajaNombre" },
     {
       title: "Total",
       dataIndex: "total",
       key: "total",
-      render: (total) => `$${total.toLocaleString("es-AR")}`,
+      render: (total) =>
+        (Number(total) || 0).toLocaleString("es-AR", {
+          style: "currency",
+          currency: "ARS",
+          maximumFractionDigits: 0,
+        }),
     },
     {
       title: "Fecha",
       dataIndex: "fechaCreacion",
       key: "fechaCreacion",
-      responsive: ["md"],
       render: (fecha) => dayjs(fecha).format("DD/MM/YYYY"),
     },
     {
       title: "Acciones",
       key: "acciones",
-      render: (text, record) => (
-        <Space size="small">
-          <Button
-            size={isMobile ? "small" : "middle"}
-            icon={<EyeOutlined />}
-            onClick={() => handleVerDetalle(record)}
-          >
-            {!isMobile && "Ver"}
+      render: (_, record) => (
+        <Space size="middle">
+          <Button size="small" onClick={() => handleVerDetalle(record)}>
+            Ver
+          </Button>
+          <Button size="small" onClick={() => editarVenta(record)}>
+            Editar
           </Button>
           <Button
-            size={isMobile ? "small" : "middle"}
-            icon={<EditOutlined />}
-            onClick={() => editarVenta(record)}
-          >
-            {!isMobile && "Editar"}
-          </Button>
-          <Button
-            size={isMobile ? "small" : "middle"}
+            size="small"
             danger
-            icon={<DeleteOutlined />}
             onClick={() => {
               Modal.confirm({
                 title: "¿Estás seguro?",
@@ -610,21 +614,19 @@ const Ventas = () => {
               });
             }}
           >
-            {!isMobile && "Eliminar"}
+            Eliminar
           </Button>
           <Button
-            size={isMobile ? "small" : "middle"}
-            icon={<PrinterOutlined />}
+            size="small"
             onClick={async () => {
               try {
-                const ventaCompleta = await api(`api/ventas/${record.id}`);
-                await generarPDF(ventaCompleta);
+                await generarPDF(record);
               } catch (error) {
                 message.error("No se pudo generar el PDF: " + error.message);
               }
             }}
           >
-            {!isMobile && "Imprimir"}
+            Imprimir
           </Button>
         </Space>
       ),
@@ -783,18 +785,18 @@ const Ventas = () => {
             columns={columns}
             loading={loading}
             rowKey="id"
-            style={{ marginTop: 20 }}
             pagination={{
               current: currentPage,
               pageSize: pageSize,
               total: totalVentas,
               onChange: (page) => setCurrentPage(page),
-              position: ["bottomCenter"],
-              size: isMobile ? "small" : "default",
               responsive: true,
+              position: ["bottomCenter"],
+              size: "small",
             }}
             size="small"
             scroll={{ x: "max-content" }}
+            style={{ marginTop: 20 }}
           />
         </div>
       </div>

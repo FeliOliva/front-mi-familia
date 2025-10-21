@@ -22,7 +22,11 @@ const Productos = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
+
   const [modalVisible, setModalVisible] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+
   const [form] = Form.useForm();
   const [registrarNuevaMedida, setRegistrarNuevaMedida] = useState(false);
   const [nombreNuevaMedida, setNombreNuevaMedida] = useState("");
@@ -70,7 +74,8 @@ const Productos = () => {
       const metodo = estado === 1 ? "DELETE" : "POST";
       await api(`api/products/${id}`, metodo);
       message.success(
-        `Producto ${nuevoEstado === 1 ? "activado" : "desactivado"
+        `Producto ${
+          nuevoEstado === 1 ? "activado" : "desactivado"
         } correctamente.`
       );
       setProductos((prev) =>
@@ -83,28 +88,48 @@ const Productos = () => {
     }
   };
 
+  // Abrir modal en modo "agregar"
+  const openAddModal = () => {
+    setIsEditing(false);
+    setEditingProduct(null);
+    form.resetFields();
+    setModalVisible(true);
+  };
+
+  // Abrir modal en modo "editar"
+  const openEditModal = (record) => {
+    setIsEditing(true);
+    setEditingProduct(record);
+    setModalVisible(true);
+    form.setFieldsValue({
+      nombre: record.nombre,
+      precio: record.precio ?? 0, // ← precio actual
+      tipoUnidadId: record.tipoUnidadId ?? record.tipoUnidad?.id,
+    });
+  };
+
   const onFinish = async (values) => {
+    // rol (si lo necesitás para auditoría)
     const token = sessionStorage.getItem("token");
     let rol_usuario = 0;
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));
       rol_usuario = payload.rol || 0;
-    } catch (e) {
-      message.warning("No se pudo leer el rol del token.");
-    }
+    } catch {}
 
     let tipoUnidadId = values.tipoUnidadId;
 
-    // Si se registra una nueva medida, primero la creamos y usamos su id
+    // crear nueva unidad si corresponde
     if (registrarNuevaMedida) {
       if (!nombreNuevaMedida) {
         message.error("Debe ingresar el nombre de la nueva medida.");
         return;
       }
       try {
-        const nuevaUnidad = await api("api/tiposUnidades", "POST", { tipo: nombreNuevaMedida });
+        const nuevaUnidad = await api("api/tiposUnidades", "POST", {
+          tipo: nombreNuevaMedida,
+        });
         tipoUnidadId = nuevaUnidad.id;
-        // Actualiza la lista de unidades para futuras altas
         fetchTiposUnidades();
       } catch (error) {
         message.error("Error al registrar la nueva medida.");
@@ -112,30 +137,64 @@ const Productos = () => {
       }
     }
 
+    // payload usando SOLO 'precio'
     const body = {
-      ...values,
+      nombre: values.nombre,
+      precio: values.precio, // ← este es el que importa
       tipoUnidadId,
-      precioInicial: values.precio,
       rol_usuario,
     };
 
     try {
-      await api("api/products", "POST", body);
-      message.success("Producto agregado correctamente");
+      // dentro de onFinish, después del await api( ... PUT ... )
+      if (isEditing && editingProduct) {
+        await api(`api/products/${editingProduct.id}`, "PUT", body);
+
+        // si cambió la unidad o se creó una nueva, recargo todo
+        const prevUnidadId =
+          editingProduct.tipoUnidadId ?? editingProduct.tipoUnidad?.id ?? null;
+        const unidadCambio = prevUnidadId !== (tipoUnidadId ?? null);
+
+        if (registrarNuevaMedida || unidadCambio) {
+          await fetchProductos(currentPage); // ← recarga desde el back
+        } else {
+          // si NO cambió la unidad, puedo hacer update optimista solo del precio/nombre
+          setProductos((prev) =>
+            prev.map((p) =>
+              p.id === editingProduct.id
+                ? { ...p, nombre: body.nombre, precio: body.precio }
+                : p
+            )
+          );
+        }
+
+        message.success("Producto actualizado correctamente");
+        form.resetFields();
+        setModalVisible(false);
+        setIsEditing(false);
+        setEditingProduct(null);
+      } else {
+        // AGREGAR
+        await api("api/products", "POST", body);
+        message.success("Producto agregado correctamente");
+        fetchProductos(currentPage);
+      }
       form.resetFields();
       setModalVisible(false);
-      fetchProductos(currentPage);
+      setIsEditing(false);
+      setEditingProduct(null);
     } catch (error) {
-      message.error(error.message || "Error al agregar producto.");
+      message.error(
+        error.message ||
+          (isEditing
+            ? "Error al actualizar producto."
+            : "Error al agregar producto.")
+      );
     }
   };
 
   const columns = [
-    {
-      title: "Nombre",
-      dataIndex: "nombre",
-      key: "nombre",
-    },
+    { title: "Nombre", dataIndex: "nombre", key: "nombre" },
     {
       title: "Unidad",
       key: "tipoUnidad",
@@ -143,29 +202,35 @@ const Productos = () => {
     },
     {
       title: "Precio",
-      render: (_, record) => {
-        const precio = record.precioInicial || 0;
-        return (
-          <span>
-            {precio.toLocaleString("es-CL", {
-              style: "currency",
-              currency: "CLP",
-            })}
-          </span>
-        );
-      },
+      key: "precio",
+      render: (_, record) => (
+        <span>
+          {(record.precio ?? 0).toLocaleString("es-AR", {
+            style: "currency",
+            currency: "ARS",
+            maximumFractionDigits: 0,
+          })}
+        </span>
+      ),
     },
     {
       title: "Acciones",
       key: "acciones",
-      render: (text, record) => (
+      render: (_, record) => (
         <Space size="middle">
+          <Button size="small" onClick={() => openEditModal(record)}>
+            Editar
+          </Button>
           {record.estado === 1 ? (
             <Button
               danger
               type="primary"
               size="small"
-              style={{ backgroundColor: "white", borderColor: "#ff4d4f", color: "#ff4d4f" }}
+              style={{
+                backgroundColor: "white",
+                borderColor: "#ff4d4f",
+                color: "#ff4d4f",
+              }}
               onClick={() => toggleProductos(record.id, record.estado)}
             >
               Desactivar
@@ -183,6 +248,7 @@ const Productos = () => {
       ),
     },
   ];
+
   const productosFiltrados = productos
     .filter((p) => {
       if (filtroEstado === "activos") return p.estado === 1;
@@ -193,11 +259,13 @@ const Productos = () => {
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
-      {/* Tarjeta de acciones y filtros */}
+      {/* Header acciones */}
       <div className="bg-white rounded-lg shadow-md mb-6">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h2 className="text-lg font-semibold text-gray-900 mb-2 sm:mb-0">Productos</h2>
-          <Button type="primary" onClick={() => setModalVisible(true)}>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2 sm:mb-0">
+            Productos
+          </h2>
+          <Button type="primary" onClick={openAddModal}>
             Agregar Producto
           </Button>
         </div>
@@ -228,9 +296,13 @@ const Productos = () => {
           </Button>
         </div>
       </div>
+
+      {/* Tabla */}
       <div className="bg-white rounded-lg shadow-md">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Listado de Productos</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Listado de Productos
+          </h2>
         </div>
         <div className="overflow-x-auto px-4 py-4">
           <Table
@@ -253,11 +325,16 @@ const Productos = () => {
         </div>
       </div>
 
-      {/* Modal para agregar producto */}
+      {/* Modal agregar/editar */}
       <Modal
-        title="Agregar producto"
+        title={isEditing ? "Editar producto" : "Agregar producto"}
         open={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => {
+          setModalVisible(false);
+          setIsEditing(false);
+          setEditingProduct(null);
+          form.resetFields();
+        }}
         onOk={() => form.submit()}
         okText="Guardar"
         cancelText="Cancelar"
@@ -268,7 +345,7 @@ const Productos = () => {
             label="Nombre"
             rules={[{ required: true, message: "Ingrese un nombre" }]}
           >
-            <Input placeholder="Ej: Manzana Moño Azul" />
+            <Input placeholder="Ej: Acelga" />
           </Form.Item>
 
           <Form.Item
@@ -280,14 +357,14 @@ const Productos = () => {
               style={{ width: "100%" }}
               min={0}
               step={100}
-              placeholder="Ej: 20000"
+              placeholder="Ej: 2000"
             />
           </Form.Item>
 
           <Form.Item>
             <Checkbox
               checked={registrarNuevaMedida}
-              onChange={e => setRegistrarNuevaMedida(e.target.checked)}
+              onChange={(e) => setRegistrarNuevaMedida(e.target.checked)}
             >
               Registrar nueva medida
             </Checkbox>
@@ -298,12 +375,14 @@ const Productos = () => {
               label="Nombre de la nueva medida"
               required
               validateStatus={nombreNuevaMedida ? "success" : "error"}
-              help={!nombreNuevaMedida && "Ingrese el nombre de la nueva medida"}
+              help={
+                !nombreNuevaMedida && "Ingrese el nombre de la nueva medida"
+              }
             >
               <Input
                 value={nombreNuevaMedida}
-                onChange={e => setNombreNuevaMedida(e.target.value)}
-                placeholder="Ej: Cajón, Pack, etc."
+                onChange={(e) => setNombreNuevaMedida(e.target.value)}
+                placeholder="Ej: Unidad, Kg, Pack..."
               />
             </Form.Item>
           ) : (
@@ -312,10 +391,10 @@ const Productos = () => {
               label="Unidad de medida"
               rules={[{ required: true, message: "Seleccione una unidad" }]}
             >
-              <Select placeholder="Selecciona una unidad">
-                {tiposUnidades.map((unidad) => (
-                  <Option key={unidad.id} value={unidad.id}>
-                    {unidad.tipo}
+              <Select placeholder="Selecciona una unidad" allowClear>
+                {tiposUnidades.map((u) => (
+                  <Option key={u.id} value={u.id}>
+                    {u.tipo}
                   </Option>
                 ))}
               </Select>

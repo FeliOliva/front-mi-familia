@@ -73,18 +73,18 @@ const Entregas = () => {
   const [totalesEntregas, setTotalesEntregas] = useState([]);
 
   // Configurar WebSocket
-useEffect(() => {
-  if (initialized.current) return;
-  initialized.current = true;
-  const cajaId = sessionStorage.getItem("cajaId");
-  if (!cajaId) {
-    console.error("No hay cajaId en sessionStorage");
-    return;
-  }
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+    const cajaId = sessionStorage.getItem("cajaId");
+    if (!cajaId) {
+      console.error("No hay cajaId en sessionStorage");
+      return;
+    }
 
-  // Crear conexión WebSocket
-  const ws = new WebSocket(`wss://api.felipeoliva.site?cajaId=${cajaId}`);
-  setSocket(ws);
+    // Crear conexión WebSocket
+    const ws = new WebSocket(`ws://localhost:3002/?cajaId=${cajaId}`);
+    setSocket(ws);
 
     // Evento de conexión establecida
     ws.onopen = () => {
@@ -241,12 +241,12 @@ useEffect(() => {
       }
     };
 
-  return () => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.close();
-    }
-  };
-}, []); // Este efecto solo se ejecuta una vez al montar el componente
+    return () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
+  }, []); // Este efecto solo se ejecuta una vez al montar el componente
 
   // Función para aplicar filtro por estado
   const applyFilter = (estado, entregasList = entregas) => {
@@ -309,7 +309,7 @@ useEffect(() => {
 
     const totalEfectivo = metodosPago
       .filter((m) => m.nombre.toLowerCase() === "efectivo")
-      .reduce((acc, m) => acc + (m.total || 0), 0); 
+      .reduce((acc, m) => acc + (m.total || 0), 0);
 
     const payload = {
       cajaId: cajaInfo.id,
@@ -375,33 +375,36 @@ useEffect(() => {
 
   const handleConfirmEntregar = async () => {
     if (!entregaAEntregar) return;
+
+    // Para CC dejala en estado 4
+    const estadoObjetivo = 4;
+
+    // Optimista en UI
     const updatedEntregas = entregas.map((item) =>
-      item.id === entregaAEntregar.id ? { ...item, estado: 6 } : item
+      item.id === entregaAEntregar.id
+        ? { ...item, estado: estadoObjetivo }
+        : item
     );
-    const paymentData = {
-      venta_id: entregaAEntregar.id,
-      estado: 6, // Estado 6 para entregada
-    };
     setEntregas(updatedEntregas);
+
     setConfirmEntregaVisible(false);
     setEntregaAEntregar(null);
-    //entregas/cambiarEstado
-    const response = await api(
+
+    // Llamada a la API (mismo endpoint que ya usás, pero con estado=4)
+    await api(
       `api/entregas/cambiarEstado?venta_id=${
         entregaAEntregar.id
-      }&estado=6&caja_id=${sessionStorage.getItem("cajaId")}`,
+      }&estado=${estadoObjetivo}&caja_id=${sessionStorage.getItem("cajaId")}`,
       "POST"
     );
 
-    console.log(response);
     notification.success({
-      message: "Pedido entregado",
-      description: "El pedido fue marcado como entregado.",
+      message: "Pedido marcado en Cuenta Corriente",
+      description: "La venta quedó en estado de cuenta corriente.",
     });
   };
 
   // Cancelar entrega
-
   const handleCancelEntregar = () => {
     setConfirmEntregaVisible(false);
     setEntregaAEntregar(null);

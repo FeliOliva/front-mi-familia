@@ -8,6 +8,7 @@ import {
   message,
   Typography,
   Checkbox,
+  Space,
 } from "antd";
 import { useParams } from "react-router-dom";
 import { api } from "../../services/api";
@@ -16,24 +17,30 @@ const { Title } = Typography;
 
 const Negocios = () => {
   const { id } = useParams();
+
   const [negocios, setNegocios] = useState([]);
-  const [clienteNombre, setClienteNombre] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // modal + form (add/edit como en Productos)
   const [modalVisible, setModalVisible] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingNegocio, setEditingNegocio] = useState(null);
   const [form] = Form.useForm();
+
+  // paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // NUEVO: estados para búsqueda y filtro de estado
+  // búsqueda + filtro (igual patrón)
   const [busqueda, setBusqueda] = useState("");
-  const [filtroEstado, setFiltroEstado] = useState("todos"); // "todos", "activos", "inactivos"
+  const [filtroEstado, setFiltroEstado] = useState("todos"); // todos | activos | inactivos
 
   const fetchNegocios = async () => {
     try {
       const data = await api(`api/getAllNegocios`);
-      setNegocios(data.negocios);
+      setNegocios(data.negocios || []);
     } catch (error) {
-      message.error(error.message);
+      message.error(error.message || "Error al cargar negocios");
     } finally {
       setLoading(false);
     }
@@ -43,127 +50,171 @@ const Negocios = () => {
     fetchNegocios();
   }, []);
 
-  const handleAddNegocio = async (values) => {
+  // === Crear / Editar (igual que Productos) ===
+  const openAddModal = () => {
+    setIsEditing(false);
+    setEditingNegocio(null);
+    form.resetFields();
+    setModalVisible(true);
+  };
+
+  const openEditModal = (record) => {
+    setIsEditing(true);
+    setEditingNegocio(record);
+    setModalVisible(true);
+    form.setFieldsValue({
+      nombre: record.nombre,
+      direccion: record.direccion,
+      esCuentaCorriente: !!record.esCuentaCorriente,
+    });
+  };
+
+  const onFinish = async (values) => {
     try {
-      const rol = sessionStorage.getItem("rol");
-      await api("api/negocio", "POST", {
-        ...values,
-        clienteId: parseInt(id),
-        rol_usuario: parseInt(rol),
-      });
-      message.success("Negocio agregado exitosamente");
-      setModalVisible(false);
+      const rol_usuario = parseInt(sessionStorage.getItem("rol") || "0", 10);
+
+      if (isEditing && editingNegocio) {
+        // EDITAR (PUT) — exactamente como pediste
+        await api(`api/negocio/${editingNegocio.id}`, "PUT", {
+          nombre: values.nombre,
+          direccion: values.direccion,
+          rol_usuario,
+        });
+
+        message.success("Negocio actualizado correctamente");
+        // refresco optimista simple (como Productos) o recargo lista:
+        setNegocios((prev) =>
+          prev.map((n) =>
+            n.id === editingNegocio.id
+              ? { ...n, nombre: values.nombre, direccion: values.direccion }
+              : n
+          )
+        );
+      } else {
+        // CREAR (POST)
+        await api("api/negocio", "POST", {
+          ...values,
+          clienteId: parseInt(id),
+          rol_usuario,
+        });
+        message.success("Negocio agregado exitosamente");
+        fetchNegocios();
+      }
+
       form.resetFields();
-      fetchNegocios(); // Recargar negocios
+      setModalVisible(false);
+      setIsEditing(false);
+      setEditingNegocio(null);
     } catch (error) {
-      message.error(error.message);
+      message.error(error.message || "Error al guardar el negocio");
     }
   };
-  const handleDeshabilitar = async (id) => {
+
+  // === Activar / Desactivar (mismo patrón de Productos: botones con texto) ===
+  const handleDeshabilitar = async (negocioId) => {
     try {
-      await api(`api/negocio/${id}/deshabilitar`, "PUT");
+      await api(`api/negocio/${negocioId}/deshabilitar`, "PUT");
       message.success("Negocio deshabilitado");
-      fetchNegocios();
+      setNegocios((prev) =>
+        prev.map((n) => (n.id === negocioId ? { ...n, estado: 0 } : n))
+      );
     } catch (error) {
       message.error("Error al deshabilitar el negocio");
     }
   };
 
-  const handleHabilitar = async (id) => {
+  const handleHabilitar = async (negocioId) => {
     try {
-      await api(`api/negocio/${id}/habilitar`, "PUT");
+      await api(`api/negocio/${negocioId}/habilitar`, "PUT");
       message.success("Negocio habilitado");
-      fetchNegocios();
+      setNegocios((prev) =>
+        prev.map((n) => (n.id === negocioId ? { ...n, estado: 1 } : n))
+      );
     } catch (error) {
       message.error("Error al habilitar el negocio");
     }
   };
 
-  // FILTRO Y BÚSQUEDA
+  // FILTRO + búsqueda + orden (igual patrón)
   const negociosFiltrados = negocios
     .filter((n) => {
       if (filtroEstado === "activos") return n.estado === 1;
       if (filtroEstado === "inactivos") return n.estado === 0;
       return true;
     })
-    .filter(
-      (n) =>
-        n.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-        n.direccion.toLowerCase().includes(busqueda.toLowerCase())
-    );
+    .filter((n) => {
+      const q = busqueda.toLowerCase();
+      return (
+        (n.nombre || "").toLowerCase().includes(q) ||
+        (n.direccion || "").toLowerCase().includes(q)
+      );
+    });
 
   const negociosOrdenados = [...negociosFiltrados].sort((a, b) => {
-    if (a.estado !== b.estado) {
-      return b.estado - a.estado; // Activos (1) primero, inactivos (0) después
-    }
+    if (a.estado !== b.estado) return b.estado - a.estado; // activos primero
     return new Date(b.fechaCreacion) - new Date(a.fechaCreacion);
   });
 
+  const negociosPaginados = negociosOrdenados.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
+  // === Columnas: mismas reglas que en Productos (sin columna Estado) ===
   const columns = [
-    {
-      title: "Nombre",
-      dataIndex: "nombre",
-      key: "nombre",
-    },
-    {
-      title: "Dirección",
-      dataIndex: "direccion",
-      key: "direccion",
-    },
+    { title: "Nombre", dataIndex: "nombre", key: "nombre" },
+    { title: "Dirección", dataIndex: "direccion", key: "direccion" },
     {
       title: "Cuenta Corriente",
       dataIndex: "esCuentaCorriente",
       key: "esCuentaCorriente",
-      render: (value) => (value ? "Sí" : "No"),
-    },
-    {
-      title: "Estado",
-      dataIndex: "estado",
-      key: "estado",
-      render: (value) =>
-        value === 1 ? (
-          <span style={{ color: "green" }}>Activo</span>
-        ) : (
-          <span style={{ color: "red" }}>Inactivo</span>
-        ),
+      render: (v) => (v ? "Sí" : "No"),
     },
     {
       title: "Acciones",
       key: "acciones",
-      render: (_, record) =>
-        record.estado === 1 ? (
-          <Button
-            danger
-            size="small"
-            onClick={() => handleDeshabilitar(record.id)}
-          >
-            Deshabilitar
+      render: (_, record) => (
+        <Space size="middle">
+          <Button size="small" onClick={() => openEditModal(record)}>
+            Editar
           </Button>
-        ) : (
-          <Button
-            type="primary"
-            size="small"
-            onClick={() => handleHabilitar(record.id)}
-          >
-            Habilitar
-          </Button>
-        ),
+          {record.estado === 1 ? (
+            <Button
+              danger
+              type="primary"
+              size="small"
+              style={{
+                backgroundColor: "white",
+                borderColor: "#ff4d4f",
+                color: "#ff4d4f",
+              }}
+              onClick={() => handleDeshabilitar(record.id)}
+            >
+              Deshabilitar
+            </Button>
+          ) : (
+            <Button
+              type="primary"
+              size="small"
+              onClick={() => handleHabilitar(record.id)}
+            >
+              Habilitar
+            </Button>
+          )}
+        </Space>
+      ),
     },
   ];
 
-const negociosPaginados = negociosOrdenados.slice(
-  (currentPage - 1) * pageSize,
-  currentPage * pageSize
-);
-
-return (
+  return (
     <div className="p-4 max-w-7xl mx-auto">
-      {/* Tarjeta de acciones y filtros */}
+      {/* Header acciones y filtros (igual estilo que Productos) */}
       <div className="bg-white rounded-lg shadow-md mb-6">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h2 className="text-lg font-semibold text-gray-900 mb-2 sm:mb-0">Negocios</h2>
-          <Button type="primary" onClick={() => setModalVisible(true)}>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2 sm:mb-0">
+            Negocios
+          </h2>
+          <Button type="primary" onClick={openAddModal}>
             Agregar Negocio
           </Button>
         </div>
@@ -195,9 +246,12 @@ return (
         </div>
       </div>
 
-<div className="bg-white rounded-lg shadow-md">
+      {/* Tabla — mismo patrón que Productos */}
+      <div className="bg-white rounded-lg shadow-md">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Listado de Negocios</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Listado de Negocios
+          </h2>
         </div>
         <div className="overflow-x-auto px-4 py-4">
           <Table
@@ -217,20 +271,28 @@ return (
               showSizeChanger: true,
               pageSizeOptions: ["5", "10", "20", "50"],
               position: ["bottomCenter"],
+              responsive: true,
             }}
+            scroll={{ x: "max-content" }} // ← igual que Productos
           />
         </div>
       </div>
 
+      {/* Modal agregar/editar — mismo modal para ambos flujos */}
       <Modal
-        title="Agregar Nuevo Negocio"
+        title={isEditing ? "Editar Negocio" : "Agregar Nuevo Negocio"}
         open={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => {
+          setModalVisible(false);
+          setIsEditing(false);
+          setEditingNegocio(null);
+          form.resetFields();
+        }}
         onOk={() => form.submit()}
-        okText="Agregar"
+        okText="Guardar"
         cancelText="Cancelar"
       >
-        <Form form={form} layout="vertical" onFinish={handleAddNegocio}>
+        <Form form={form} layout="vertical" onFinish={onFinish}>
           <Form.Item
             name="nombre"
             label="Nombre del negocio"
@@ -245,13 +307,17 @@ return (
           >
             <Input placeholder="Dirección del negocio" />
           </Form.Item>
-          <Form.Item
-            name="esCuentaCorriente"
-            valuePropName="checked"
-            initialValue={false}
-          >
-            <Checkbox>Registrar como cuenta corriente</Checkbox>
-          </Form.Item>
+
+          {/* Igual que en Productos: este campo solo en creación */}
+          {!isEditing && (
+            <Form.Item
+              name="esCuentaCorriente"
+              valuePropName="checked"
+              initialValue={false}
+            >
+              <Checkbox>Registrar como cuenta corriente</Checkbox>
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </div>
