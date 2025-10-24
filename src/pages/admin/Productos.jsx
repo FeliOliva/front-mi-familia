@@ -33,12 +33,31 @@ const Productos = () => {
   const [tiposUnidades, setTiposUnidades] = useState([]);
   const [filtroEstado, setFiltroEstado] = useState("todos");
 
-  const fetchProductos = async (page = 1) => {
+  const [debouncedQ, setDebouncedQ] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(busqueda.trim()), 300);
+    return () => clearTimeout(t);
+  }, [busqueda]);
+
+  const fetchProductos = async (page = 1, q = "", estado = filtroEstado) => {
     setLoading(true);
     try {
-      const data = await api(`api/products?page=${page}&limit=${pageSize}`);
-      setProductos(data.products);
-      setTotal(data.total || data.products?.length || 0);
+      const params = new URLSearchParams();
+      params.set("page", page);
+      params.set("limit", pageSize);
+      if (q) params.set("q", q);
+      if (estado && estado !== "todos") params.set("estado", estado); // "activos" | "inactivos"
+
+      const data = await api(`api/products?${params.toString()}`);
+      // normalizá unidad si querés mostrarla siempre
+      const products = (data.products || []).map((p) => ({
+        ...p,
+        tipoUnidad: p.tipoUnidad || p.tipounidad || null,
+      }));
+
+      setProductos(products);
+      setTotal(data.total || products.length || 0);
       setCurrentPage(page);
     } catch (error) {
       message.error(error.message);
@@ -65,8 +84,9 @@ const Productos = () => {
   }, [modalVisible]);
 
   useEffect(() => {
-    fetchProductos(currentPage);
-  }, [currentPage]);
+    fetchProductos(currentPage, debouncedQ, filtroEstado);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, debouncedQ, filtroEstado]);
 
   const toggleProductos = async (id, estado) => {
     try {
@@ -198,7 +218,8 @@ const Productos = () => {
     {
       title: "Unidad",
       key: "tipoUnidad",
-      render: (_, record) => record.tipoUnidad?.tipo || "-",
+      render: (_, record) =>
+        record.tipoUnidad?.tipo || record.tipounidad?.tipo || "-",
     },
     {
       title: "Precio",
@@ -273,24 +294,37 @@ const Productos = () => {
           <Input
             placeholder="Buscar por nombre"
             value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
+            onChange={(e) => {
+              setBusqueda(e.target.value);
+              setCurrentPage(1);
+            }}
             style={{ width: 300, marginRight: 10 }}
           />
+
           <Button
             type={filtroEstado === "todos" ? "primary" : "default"}
-            onClick={() => setFiltroEstado("todos")}
+            onClick={() => {
+              setFiltroEstado("todos");
+              setCurrentPage(1);
+            }}
           >
             Todos
           </Button>
           <Button
             type={filtroEstado === "activos" ? "primary" : "default"}
-            onClick={() => setFiltroEstado("activos")}
+            onClick={() => {
+              setFiltroEstado("activos");
+              setCurrentPage(1);
+            }}
           >
             Activos
           </Button>
           <Button
             type={filtroEstado === "inactivos" ? "primary" : "default"}
-            onClick={() => setFiltroEstado("inactivos")}
+            onClick={() => {
+              setFiltroEstado("inactivos");
+              setCurrentPage(1);
+            }}
           >
             Inactivos
           </Button>
@@ -306,7 +340,7 @@ const Productos = () => {
         </div>
         <div className="overflow-x-auto px-4 py-4">
           <Table
-            dataSource={productosFiltrados}
+            dataSource={productos}
             columns={columns}
             loading={loading}
             rowKey="id"
@@ -314,7 +348,8 @@ const Productos = () => {
               current: currentPage,
               pageSize: pageSize,
               total: total,
-              onChange: (page) => fetchProductos(page),
+              onChange: (page) =>
+                fetchProductos(page, debouncedQ, filtroEstado),
               responsive: true,
               position: ["bottomCenter"],
               size: "small",

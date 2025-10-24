@@ -9,6 +9,7 @@ import {
   InputNumber,
   Drawer,
   Input,
+  Form,
 } from "antd";
 import dayjs from "dayjs";
 import { api } from "../../services/api";
@@ -26,6 +27,72 @@ import logo from "../../assets/logo.png";
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
+
+// convierte "35.000,58" o "35000,58" o "35000.58" -> 35000.58 (Number con 2 decimales)
+const parseMontoFlexible = (valor) => {
+  if (valor == null || valor === "") return 0;
+  // si viene como número, normalizar a 2 decimales
+  if (typeof valor === "number") return Number(valor.toFixed(2));
+
+  // string: quitar $ y espacios
+  let v = String(valor).replace(/\s|\$/g, "");
+
+  // si tiene coma y punto, asumimos coma = decimales (formato es-AR)
+  // ej: 35.000,58 -> quitar miles (.) y cambiar coma por punto
+  if (v.includes(",") && v.includes(".")) {
+    v = v.replace(/\./g, "").replace(",", ".");
+  } else {
+    // si solo tiene coma, cambiar por punto
+    if (v.includes(",")) v = v.replace(",", ".");
+  }
+  // quitar cualquier cosa no numérica (excepto el punto decimal y signo menos)
+  v = v.replace(/[^0-9.-]/g, "");
+  const n = Number(v);
+  if (Number.isNaN(n)) return 0;
+  return Number(n.toFixed(2));
+};
+
+// formatter/parser para InputNumber (visual lindo + admite coma/punto)
+const formatMoneyAR = (value) => {
+  if (value == null || value === "") return "";
+  const n = parseMontoFlexible(value);
+  return n.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+const parseFromInputNumber = (v) => parseMontoFlexible(v);
+
+const prepararTransacciones = (raw) => {
+  const base = (raw || []).map((item) => {
+    const fecha = item.fecha || item.fechaCreacion || new Date().toISOString();
+    const montoBase = Number(
+      item.total_con_descuento ?? item.total ?? item.monto ?? 0
+    );
+    const signo = item.tipo === "Venta" ? +1 : -1; // Entrega/NC restan
+    return {
+      ...item,
+      fecha,
+      __montoOriginal: montoBase, // para mostrar
+      __montoFirmado: signo * montoBase, // para acumular saldo
+      uniqueId: `${item.tipo}-${item.id}`,
+    };
+  });
+
+  const asc = base.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+  let saldo = 0;
+  const conSaldo = asc.map((it) => {
+    saldo += it.__montoFirmado;
+    return {
+      ...it,
+      saldo_restante: saldo,
+      monto_formateado: it.__montoOriginal.toLocaleString("es-AR"),
+    };
+  });
+
+  return conSaldo.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+};
 
 const VentasPorNegocio = () => {
   const [negocios, setNegocios] = useState([]);
@@ -47,13 +114,22 @@ const VentasPorNegocio = () => {
   const [isAddPagoOpen, setIsAddPagoOpen] = useState(false);
   const [nuevoMonto, setNuevoMonto] = useState(null);
   const [nuevoMetodoPago, setNuevoMetodoPago] = useState(null);
-  const [loadingPago, setLoadingPago] = useState(false)
+  const [loadingPago, setLoadingPago] = useState(false);
   const [metodosPago, setMetodosPago] = useState([]);
   const [isAddNotaCreditoOpen, setIsAddNotaCreditoOpen] = useState(false);
   const [motivoNotaCredito, setMotivoNotaCredito] = useState("");
   const [montoNotaCredito, setMontoNotaCredito] = useState(null);
   const [loadingNotaCredito, setLoadingNotaCredito] = useState(false);
   const [montoWarning, setMontoWarning] = useState("");
+  const [chequeModalOpen, setChequeModalOpen] = useState(false);
+  const [savingCheque, setSavingCheque] = useState(false);
+  const [chequeForm] = Form.useForm();
+  const esCheque =
+    !!nuevoMetodoPago &&
+    metodosPago
+      .find((m) => String(m.id) === String(nuevoMetodoPago))
+      ?.nombre?.toUpperCase() === "CHEQUE";
+
   // Detectar el ancho de la pantalla
   useEffect(() => {
     const handleResize = () => {
@@ -81,12 +157,11 @@ const VentasPorNegocio = () => {
     fetchNegocios();
   }, []);
 
-
-
   useEffect(() => {
     const fetchMetodosPago = async () => {
       try {
         const res = await api("api/metodosPago");
+        console.log("Metodos pagos", res);
         setMetodosPago(res);
       } catch (err) {
         message.error("Error al cargar métodos de pago");
@@ -123,11 +198,17 @@ const VentasPorNegocio = () => {
   const guardarEdicion = async () => {
     try {
       if (editingRecord.tipo === "Venta") {
-        await api(`api/ventas/${editingRecord.id}`, "POST", { total: editMonto });
+        await api(`api/ventas/${editingRecord.id}`, "POST", {
+          total: editMonto,
+        });
       } else if (editingRecord.tipo === "Entrega") {
-        await api(`api/entregas/${editingRecord.id}`, "PUT", { monto: editMonto });
+        await api(`api/entregas/${editingRecord.id}`, "PUT", {
+          monto: editMonto,
+        });
       } else if (editingRecord.tipo === "Nota de Crédito") {
-        await api(`api/notasCredito/${editingRecord.id}`, "PUT", { monto: editMonto });
+        await api(`api/notasCredito/${editingRecord.id}`, "PUT", {
+          monto: editMonto,
+        });
       }
       message.success("Registro actualizado correctamente");
       setIsEditModalOpen(false);
@@ -172,14 +253,20 @@ const VentasPorNegocio = () => {
       message.warning("Completa todos los campos para agregar el pago");
       return;
     }
+
+    const montoNum = parseMontoFlexible(nuevoMonto);
+    if (montoNum <= 0) return message.error("Ingresá un monto válido");
+    if (montoNum > saldoPendiente)
+      return message.error("El monto supera el saldo pendiente");
+
     setLoadingPago(true);
     try {
       const cajaId = parseInt(sessionStorage.getItem("cajaId"), 10);
       await api("api/entregas", "POST", {
-        monto: nuevoMonto,
-        metodoPagoId: nuevoMetodoPago,
-        negocioId: negocioSeleccionado,
-        cajaId, // <--- AGREGA ESTA LÍNEA
+        monto: montoNum, // <--- enviado con centavos si el backend lo soporta
+        metodoPagoId: Number(nuevoMetodoPago),
+        negocioId: Number(negocioSeleccionado),
+        cajaId,
       });
       message.success("Pago registrado correctamente");
       setIsAddPagoOpen(false);
@@ -196,7 +283,9 @@ const VentasPorNegocio = () => {
 
   const handleAgregarNotaCredito = async () => {
     if (!negocioSeleccionado || !motivoNotaCredito || !montoNotaCredito) {
-      message.warning("Completa todos los campos para agregar la nota de crédito");
+      message.warning(
+        "Completa todos los campos para agregar la nota de crédito"
+      );
       return;
     }
     setLoadingNotaCredito(true);
@@ -222,9 +311,7 @@ const VentasPorNegocio = () => {
     const { tipo, id } = record;
     try {
       if (tipo === "Nota de Crédito") {
-        const res = await api(
-          `api/notasCredito/${id}`
-        );
+        const res = await api(`api/notasCredito/${id}`);
         const nota = res;
         setModalTitle("Detalle de Nota de Crédito");
         setModalContent(
@@ -294,21 +381,8 @@ const VentasPorNegocio = () => {
   };
 
   const handleBuscarTransacciones = async () => {
-    if (!negocioSeleccionado) {
-      message.warning("Seleccioná un negocio");
-      return;
-    }
-
-    if (!fechaInicio || !fechaFin) {
-      message.warning("Seleccioná fechas de inicio y fin");
-      return;
-    }
-
-    const cajaId = sessionStorage.getItem("cajaId");
-    if (!cajaId) {
-      message.warning("No se encontró el ID de la caja en sessionStorage");
-      return;
-    }
+    if (!negocioSeleccionado) return message.warning("Seleccioná un negocio");
+    if (!fechaInicio || !fechaFin) return message.warning("Seleccioná fechas");
 
     const startDate = dayjs(fechaInicio).format("YYYY-MM-DD");
     const endDate = dayjs(fechaFin).format("YYYY-MM-DD");
@@ -317,49 +391,9 @@ const VentasPorNegocio = () => {
       const res = await api(
         `api/resumenCuenta/negocio/${negocioSeleccionado}?startDate=${startDate}&endDate=${endDate}`
       );
-
-      console.log(res);
-
-      let saldoAcumulado = 0;
-
-      const transaccionesOrdenadas = res
-        .map((item) => ({
-          ...item,
-          uniqueId: `${item.tipo}-${item.id}`,
-        }))
-        .sort(
-          (a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
-        )
-        .map((item) => {
-          let monto = item.total_con_descuento || item.monto || 0;
-          monto = Number(monto);
-
-          if (item.tipo === "Venta") {
-            saldoAcumulado += monto;
-          } else if (
-            item.tipo === "Entrega" ||
-            item.tipo === "Nota de Crédito"
-          ) {
-            saldoAcumulado -= monto;
-          }
-
-          return {
-            ...item,
-            saldo_restante: saldoAcumulado,
-            monto_formateado: (
-              item.total_con_descuento ||
-              item.monto ||
-              0
-            ).toLocaleString("es-AR"),
-          };
-        })
-        .sort(
-          (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
-        );
-
-      setTransacciones(transaccionesOrdenadas);
+      setTransacciones(prepararTransacciones(res));
       setFilterDrawerVisible(false);
-    } catch (err) {
+    } catch {
       message.error("Error al cargar las transacciones");
     }
   };
@@ -530,21 +564,27 @@ const VentasPorNegocio = () => {
     window.location.reload(); // para recargar el contenido original
   };
 
-
-  // Calcula el saldo pendiente de la venta seleccionada
   const saldoPendiente = React.useMemo(() => {
-    // Busca la última venta en transacciones
-    const venta = transacciones.find(t => t.tipo === "Venta");
-    if (!venta) return 0;
-    // Suma todas las entregas y notas de crédito
-    const entregas = transacciones.filter(t => t.tipo === "Entrega");
-    const notasCredito = transacciones.filter(t => t.tipo === "Nota de Crédito");
-    const totalPagado = entregas.reduce((sum, e) => sum + (e.monto || 0), 0) +
-      notasCredito.reduce((sum, n) => sum + (n.monto || 0), 0);
-    const totalVenta = venta.total_con_descuento || venta.monto || venta.total || 0;
-    return Math.max(totalVenta - totalPagado, 0);
-  }, [transacciones]);
+    if (!Array.isArray(transacciones)) return 0;
 
+    const totalVentas = transacciones
+      .filter((t) => t.tipo === "Venta")
+      .reduce(
+        (acc, t) =>
+          acc + Number(t.total_con_descuento ?? t.total ?? t.monto ?? 0),
+        0
+      );
+
+    const totalCreditos = transacciones
+      .filter((t) => t.tipo === "Entrega" || t.tipo === "Nota de Crédito")
+      .reduce(
+        (acc, t) =>
+          acc + Number(t.monto ?? t.total ?? t.total_con_descuento ?? 0),
+        0
+      );
+
+    return Math.max(totalVentas - totalCreditos, 0);
+  }, [transacciones]);
 
   // Renderizado principal
   return (
@@ -552,7 +592,9 @@ const VentasPorNegocio = () => {
       {/* Filtros */}
       <div className="bg-white rounded-lg shadow-md mb-6">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Resumen por Negocio</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Resumen por Negocio
+          </h2>
         </div>
         <div className="px-4 py-4 flex flex-col sm:flex-row flex-wrap gap-2 md:gap-4 items-start sm:items-center">
           {/* SOLO filtros principales en móvil */}
@@ -587,7 +629,9 @@ const VentasPorNegocio = () => {
                   style={{ width: "100%" }}
                   format="DD/MM/YYYY"
                   placeholder="Fecha final"
-                  disabledDate={(current) => fechaInicio && current < fechaInicio}
+                  disabledDate={(current) =>
+                    fechaInicio && current < fechaInicio
+                  }
                 />
               </div>
               <div className="flex gap-2 w-full mb-2">
@@ -653,7 +697,6 @@ const VentasPorNegocio = () => {
           )}
         </div>
       </div>
-
 
       {/* Botón de filtro para móviles */}
       {isMobile && (
@@ -783,13 +826,81 @@ const VentasPorNegocio = () => {
         </Drawer>
       )}
 
-
-
       <Modal
-        title="Agregar Pago/Entrega"
+        title="Agregar Entrega"
         open={isAddPagoOpen}
         onCancel={() => setIsAddPagoOpen(false)}
-        onOk={handleAgregarPago}
+        onOk={async () => {
+          if (esCheque) {
+            try {
+              setLoadingPago(true);
+              const values = await chequeForm.validateFields();
+
+              const cajaId = parseInt(
+                sessionStorage.getItem("cajaId") || "0",
+                10
+              );
+              if (!cajaId) {
+                message.error("Caja no encontrada");
+                setLoadingPago(false);
+                return;
+              }
+              if (!negocioSeleccionado) {
+                message.error("Seleccioná un negocio");
+                setLoadingPago(false);
+                return;
+              }
+
+              const montoNum = parseMontoFlexible(nuevoMonto);
+              if (montoNum <= 0) {
+                message.error("Ingresá un monto válido");
+                setLoadingPago(false);
+                return;
+              }
+              if (montoNum > saldoPendiente) {
+                message.error("El monto supera el saldo pendiente");
+                setLoadingPago(false);
+                return;
+              }
+
+              // 1) Registrar CHEQUE (usa centavos si tu backend espera Decimal)
+              await api("api/cheques", "POST", {
+                banco: values.banco,
+                nroCheque: values.nroCheque,
+                fechaEmision: dayjs(values.fechaEmision).format("DD/MM/YYYY"),
+                fechaCobro: dayjs(values.fechaCobro).format("DD/MM/YYYY"),
+                monto: montoNum, // <--- centavos admitidos
+                negocioId: Number(negocioSeleccionado),
+              });
+
+              // 2) Registrar ENTREGA con método CHEQUE
+              await api("api/entregas", "POST", {
+                monto: montoNum,
+                metodoPagoId: Number(nuevoMetodoPago),
+                negocioId: Number(negocioSeleccionado),
+                cajaId,
+              });
+
+              message.success("Cheque y pago registrados");
+              chequeForm.resetFields();
+              setNuevoMetodoPago(null);
+              setNuevoMonto(null);
+              setIsAddPagoOpen(false); // <-- cierra el modal
+              obtenerResumen();
+            } catch (err) {
+              const msg =
+                err?.response?.data?.message ||
+                err?.message ||
+                "No se pudo registrar el cheque";
+              message.error(msg);
+            } finally {
+              setLoadingPago(false);
+            }
+            return;
+          }
+          // si NO es cheque, usa tu flujo normal:
+          handleAgregarPago();
+        }}
         okText="Registrar"
         confirmLoading={loadingPago}
       >
@@ -798,19 +909,29 @@ const VentasPorNegocio = () => {
             <label>Monto</label>
             <InputNumber
               value={nuevoMonto}
-              onChange={value => {
+              onChange={(raw) => {
+                const value = parseFromInputNumber(raw);
+                if (!Number.isFinite(value)) return;
+
+                // validá contra saldo pendiente (permitiendo centavos)
                 if (value > saldoPendiente) {
-                  setMontoWarning(`El monto no puede superar el saldo pendiente ($${saldoPendiente.toLocaleString("es-AR")})`);
-                  // No actualices el valor de nuevoMonto
-                } else {
-                  setNuevoMonto(value);
-                  if (montoWarning) setMontoWarning("");
+                  setMontoWarning(
+                    `El monto no puede superar el saldo pendiente ($${saldoPendiente.toLocaleString(
+                      "es-AR"
+                    )})`
+                  );
+                  return;
                 }
+                setMontoWarning("");
+                setNuevoMonto(value);
               }}
-              min={1}
+              stringMode
+              step={0.01}
+              min={0.01}
               style={{ width: "100%" }}
               placeholder="Monto"
-              disabled={saldoPendiente <= 0}
+              formatter={formatMoneyAR}
+              parser={parseFromInputNumber}
             />
             {montoWarning && (
               <div style={{ color: "red", marginTop: 4 }}>{montoWarning}</div>
@@ -832,8 +953,48 @@ const VentasPorNegocio = () => {
             </Select>
           </div>
         </div>
+        {/* Campos adicionales SOLO si el método es CHEQUE */}
+        {esCheque && (
+          <Form layout="vertical" form={chequeForm} className="mt-2">
+            <Form.Item
+              name="banco"
+              label="Banco"
+              rules={[{ required: true, message: "Ingresá el banco" }]}
+            >
+              <Input placeholder="Ej: Nación" />
+            </Form.Item>
+            <Form.Item
+              name="nroCheque"
+              label="Número de cheque"
+              rules={[
+                { required: true, message: "Ingresá el número de cheque" },
+              ]}
+            >
+              <Input placeholder="Ej: 0213145123" />
+            </Form.Item>
+            <Form.Item
+              name="fechaEmision"
+              label="Fecha de emisión"
+              rules={[
+                { required: true, message: "Seleccioná la fecha de emisión" },
+              ]}
+              initialValue={dayjs()}
+            >
+              <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+            </Form.Item>
+            <Form.Item
+              name="fechaCobro"
+              label="Fecha de cobro"
+              rules={[
+                { required: true, message: "Seleccioná la fecha de cobro" },
+              ]}
+              initialValue={dayjs().add(7, "day")}
+            >
+              <DatePicker style={{ width: "100%" }} format="DD/MM/YYYY" />
+            </Form.Item>
+          </Form>
+        )}
       </Modal>
-
 
       <Modal
         title="Agregar Nota de Crédito"
@@ -850,7 +1011,7 @@ const VentasPorNegocio = () => {
               type="text"
               className="ant-input"
               value={motivoNotaCredito}
-              onChange={e => setMotivoNotaCredito(e.target.value)}
+              onChange={(e) => setMotivoNotaCredito(e.target.value)}
               placeholder="Motivo de la nota de crédito"
             />
           </div>
@@ -911,8 +1072,6 @@ const VentasPorNegocio = () => {
         </div>
       </Drawer>
 
-
-
       {/* Drawer para acciones en móvil */}
       <Drawer
         title="Acciones"
@@ -962,7 +1121,9 @@ const VentasPorNegocio = () => {
               <Button
                 danger
                 icon={<DeleteOutlined />}
-                onClick={() => handleEliminar(selectedRecord.id, selectedRecord.tipo)}
+                onClick={() =>
+                  handleEliminar(selectedRecord.id, selectedRecord.tipo)
+                }
                 style={{ width: "100%" }}
               >
                 Eliminar {selectedRecord?.tipo?.toLowerCase()}
@@ -974,12 +1135,20 @@ const VentasPorNegocio = () => {
 
       <div id="printableArea" className="hidden print:block p-6">
         <div className="text-center mb-4">
-          <img src={logo} alt="Logo" className="mx-auto mb-2" style={{ width: "100px" }} />
+          <img
+            src={logo}
+            alt="Logo"
+            className="mx-auto mb-2"
+            style={{ width: "100px" }}
+          />
           <h1 className="text-2xl font-bold">Mi Familia</h1>
           <h2 className="text-xl mt-2">Resumen de Cuenta</h2>
           {negocios.find((n) => n.id === negocioSeleccionado)?.nombre && (
             <p className="mt-2">
-              Negocio: <strong>{negocios.find((n) => n.id === negocioSeleccionado)?.nombre}</strong>
+              Negocio:{" "}
+              <strong>
+                {negocios.find((n) => n.id === negocioSeleccionado)?.nombre}
+              </strong>
             </p>
           )}
           {fechaInicio && fechaFin && (
@@ -1003,8 +1172,12 @@ const VentasPorNegocio = () => {
             {transacciones.map((item) => (
               <tr key={item.uniqueId}>
                 <td className="border border-black p-2">{item.tipo}</td>
-                <td className="border border-black p-2">{dayjs(item.fecha).format("DD/MM/YYYY")}</td>
-                <td className="border border-black p-2">${item.monto_formateado}</td>
+                <td className="border border-black p-2">
+                  {dayjs(item.fecha).format("DD/MM/YYYY")}
+                </td>
+                <td className="border border-black p-2">
+                  ${item.monto_formateado}
+                </td>
                 <td className="border border-black p-2">
                   ${item.saldo_restante.toLocaleString("es-AR")}
                 </td>
@@ -1014,7 +1187,6 @@ const VentasPorNegocio = () => {
         </table>
       </div>
     </div>
-
   );
 };
 

@@ -19,29 +19,38 @@ import {
   InputNumber,
   Row,
   Col,
-  Checkbox,
 } from "antd";
 import { api } from "../../services/api";
 import {
-  EyeOutlined,
-  EditOutlined,
   DeleteOutlined,
   ShoppingCartOutlined,
   SearchOutlined,
   PlusOutlined,
   MinusOutlined,
   ShopOutlined,
-  PrinterOutlined,
   BankOutlined,
   SolutionOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import QRCode from "qrcode";
 
 const { Option } = Select;
+const getUnidad = (prod) =>
+  prod?.tipounidad?.tipo || prod?.tipoUnidad?.tipo || "UNIDAD";
+const getUnidadAbbr = (u) => {
+  const U = (u || "").toUpperCase();
+  if (U === "UNIDAD") return "UN";
+  if (U === "KG") return "KG";
+  if (U === "CAJON") return "CAJ";
+  if (U === "BOLSA") return "BOL";
+  return U || "UN";
+};
+const getStepByUnidad = (u) => {
+  const U = (u || "").toUpperCase();
+  if (U === "KG") return 0.1;
+  return 1; // UNIDAD, CAJON, BOLSA
+};
 
 // Hook personalizado para detectar si la pantalla es móvil
 const useIsMobile = () => {
@@ -316,7 +325,10 @@ const Ventas = () => {
             a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
           );
       }
-
+      filtrados = filtrados.map((p) => ({
+        ...p,
+        _unidad: getUnidad(p), // normalizada
+      }));
       setProductosDisponibles(filtrados);
       setShowProductList(filtrados.length > 0);
     } catch (err) {
@@ -345,7 +357,6 @@ const Ventas = () => {
 
     const yaExiste = productosSeleccionados.some((p) => p.id === producto.id);
     if (yaExiste) {
-      // Actualizar la cantidad si ya existe
       const nuevos = productosSeleccionados.map((p) =>
         p.id === producto.id
           ? { ...p, cantidad: p.cantidad + parseFloat(cantidad) }
@@ -354,12 +365,14 @@ const Ventas = () => {
       setProductosSeleccionados(nuevos);
       message.success(`Se actualizó la cantidad de ${producto.nombre}`);
     } else {
+      const unidad = producto._unidad || getUnidad(producto);
       setProductosSeleccionados([
         ...productosSeleccionados,
         {
           ...producto,
           cantidad: parseFloat(cantidad),
-          tipoUnidad: producto.tipoUnidad?.tipo || "Unidad",
+          tipoUnidad: unidad, // << guarda string de unidad
+          _unidad: unidad, // << mantiene normalizada
         },
       ]);
       message.success(`${producto.nombre} agregado al carrito`);
@@ -639,7 +652,7 @@ const Ventas = () => {
       key={item.id}
       style={{ cursor: "pointer", padding: "8px 12px" }}
       onClick={() => {
-        setUnidadSeleccionada(item.tipoUnidad?.tipo || "Unidad");
+        setUnidadSeleccionada(item._unidad);
         agregarProducto(item);
       }}
     >
@@ -653,7 +666,7 @@ const Ventas = () => {
         title={item.nombre}
         description={
           <Space>
-            <Tag color="blue">{item.tipoUnidad?.tipo || "Unidad"}</Tag>
+            <Tag color="blue">{getUnidadAbbr(item._unidad)}</Tag>{" "}
             <Tag color="green">${item.precio.toLocaleString("es-AR")}</Tag>
           </Space>
         }
@@ -694,8 +707,8 @@ const Ventas = () => {
         </div>
 
         <div style={{ color: "#666", marginBottom: "6px" }}>
-          {item.tipoUnidad || "Unidad"} - ${item.precio.toLocaleString("es-AR")}{" "}
-          c/u
+          {item.tipoUnidad || item._unidad || "UNIDAD"} - $
+          {item.precio.toLocaleString("es-AR")} c/u
         </div>
 
         <div
@@ -712,14 +725,16 @@ const Ventas = () => {
               onClick={() => modificarCantidad(index, -0.5)} // Cambiar incremento
             />
             <InputNumber
-              min={0.1}
-              step={0.1}
-              precision={2}
-              value={item.cantidad}
-              onChange={(value) => actualizarCantidad(index, value)}
-              size="small"
-              style={{ width: "80px", margin: "0 4px" }}
+              min={getStepByUnidad(unidadSeleccionada || "UNIDAD")}
+              step={getStepByUnidad(unidadSeleccionada || "UNIDAD")}
+              precision={getUnidad(unidadSeleccionada) === "KG" ? 2 : 0}
+              value={cantidad}
+              onChange={(value) => setCantidad(value)}
+              addonBefore="Cant."
+              style={{ width: "100%" }}
+              size={isMobile ? "middle" : "large"}
             />
+
             <Button
               size="small"
               icon={<PlusOutlined />}
