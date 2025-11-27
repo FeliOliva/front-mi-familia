@@ -71,6 +71,8 @@ const EntregasEncargado = () => {
   const [ventasRecienActualizadas, setVentasRecienActualizadas] = useState({});
 
   const [detalleMetodo, setDetalleMetodo] = useState(null);
+
+  const wsBase = import.meta.env.VITE_WS_URL || "ws://localhost:3002";
   const [chequeForm] = Form.useForm();
   const esCheque = React.useMemo(() => {
     const m = metodosPago.find((x) => String(x.id) === String(paymentMethod));
@@ -130,10 +132,10 @@ const EntregasEncargado = () => {
       prev.map((item) =>
         item.id === ventaId
           ? {
-              ...item,
-              estado: estadoObjetivo,
-              entregadaCuentaCorriente: true, // 👈 importante para ocultar el botón
-            }
+            ...item,
+            estado: estadoObjetivo,
+            entregadaCuentaCorriente: true, // 👈 importante para ocultar el botón
+          }
           : item
       )
     );
@@ -480,8 +482,7 @@ const EntregasEncargado = () => {
       return;
     }
 
-    const ws = new WebSocket(`ws://localhost:3002?cajaId=${cajaId}`);
-
+    const ws = new WebSocket(`${wsBase}/?cajaId=${cajaId}`);
     ws.onopen = () => setWsConnected(true);
     ws.onerror = () => setWsConnected(false);
     ws.onclose = () => setWsConnected(false);
@@ -559,23 +560,23 @@ const EntregasEncargado = () => {
             prev.map((x) =>
               x.id === v.id
                 ? {
-                    ...x,
-                    monto_pagado: v.totalPagado ?? x.monto_pagado,
-                    resto_pendiente:
-                      v.restoPendiente ??
-                      Math.max(
-                        0,
-                        (v.total || x.monto) -
-                          (v.totalPagado || x.monto_pagado || 0)
-                      ),
-                    estado: v.estadoPago ?? x.estado,
-                    metodo_pago: v.estadoPago === 1 ? null : x.metodo_pago,
-                    negocio: {
-                      id: v.negocioId,
-                      nombre: v.negocio?.nombre || x.negocio?.nombre || "",
-                    },
-                    cajaId: Number(v.cajaId ?? x.cajaId),
-                  }
+                  ...x,
+                  monto_pagado: v.totalPagado ?? x.monto_pagado,
+                  resto_pendiente:
+                    v.restoPendiente ??
+                    Math.max(
+                      0,
+                      (v.total || x.monto) -
+                      (v.totalPagado || x.monto_pagado || 0)
+                    ),
+                  estado: v.estadoPago ?? x.estado,
+                  metodo_pago: v.estadoPago === 1 ? null : x.metodo_pago,
+                  negocio: {
+                    id: v.negocioId,
+                    nombre: v.negocio?.nombre || x.negocio?.nombre || "",
+                  },
+                  cajaId: Number(v.cajaId ?? x.cajaId),
+                }
                 : x
             )
           );
@@ -707,7 +708,7 @@ const EntregasEncargado = () => {
     const base =
       entrega.estado === 5
         ? entrega.resto_pendiente ??
-          Math.max(0, (entrega.monto || 0) - (entrega.monto_pagado || 0))
+        Math.max(0, (entrega.monto || 0) - (entrega.monto_pagado || 0))
         : entrega.monto || 0;
     setPaymentAmount(String(base));
     setPayLater(false);
@@ -746,8 +747,8 @@ const EntregasEncargado = () => {
           0,
           Number(
             ventaEnLista.resto_pendiente ??
-              Number(ventaEnLista.monto || 0) -
-                Number(ventaEnLista.monto_pagado || 0)
+            Number(ventaEnLista.monto || 0) -
+            Number(ventaEnLista.monto_pagado || 0)
           )
         );
         if (montoNum - pendiente > 1e-6) {
@@ -872,8 +873,8 @@ const EntregasEncargado = () => {
             cierrePendiente
               ? "Ya existe un cierre pendiente para esta caja. Debe ser finalizado por un administrador antes de generar otro."
               : !hayDatosParaCerrar()
-              ? "No hay entregas ni saldo de cuenta corriente para cerrar."
-              : ""
+                ? "No hay entregas ni saldo de cuenta corriente para cerrar."
+                : ""
           }
         >
           <Button
@@ -953,8 +954,8 @@ const EntregasEncargado = () => {
                         <span>
                           {entrega.fechaCreacion
                             ? new Date(entrega.fechaCreacion).toLocaleString(
-                                "es-AR"
-                              )
+                              "es-AR"
+                            )
                             : ""}
                         </span>
                       </div>
@@ -988,15 +989,15 @@ const EntregasEncargado = () => {
                       {(entrega.estado === 1 ||
                         entrega.estado === 3 ||
                         entrega.estado === 5) && (
-                        <Button
-                          type="primary"
-                          size="small"
-                          onClick={() => handleOpenPaymentModal(entrega)}
-                          disabled={entrega.usuarioId !== userId}
-                        >
-                          {entrega.estado === 5 ? "Completar Pago" : "Cobrar"}
-                        </Button>
-                      )}
+                          <Button
+                            type="primary"
+                            size="small"
+                            onClick={() => handleOpenPaymentModal(entrega)}
+                            disabled={entrega.usuarioId !== userId}
+                          >
+                            {entrega.estado === 5 ? "Completar Pago" : "Cobrar"}
+                          </Button>
+                        )}
 
                       {entrega.estado === 4 &&
                         !entrega.entregadaCuentaCorriente && (
@@ -1038,23 +1039,23 @@ const EntregasEncargado = () => {
             Cerrar
           </Button>,
           selectedEntrega &&
-            (selectedEntrega.estado === 1 ||
-              selectedEntrega.estado === 3 ||
-              selectedEntrega.estado === 5) && (
-              <Button
-                key="cobrar"
-                type="primary"
-                onClick={() => {
-                  handleCloseDetailsModal();
-                  handleOpenPaymentModal(selectedEntrega);
-                }}
-                disabled={selectedEntrega.usuarioId !== userId}
-              >
-                {selectedEntrega.estado === 5
-                  ? "Completar Pago"
-                  : "Cobrar Entrega"}
-              </Button>
-            ),
+          (selectedEntrega.estado === 1 ||
+            selectedEntrega.estado === 3 ||
+            selectedEntrega.estado === 5) && (
+            <Button
+              key="cobrar"
+              type="primary"
+              onClick={() => {
+                handleCloseDetailsModal();
+                handleOpenPaymentModal(selectedEntrega);
+              }}
+              disabled={selectedEntrega.usuarioId !== userId}
+            >
+              {selectedEntrega.estado === 5
+                ? "Completar Pago"
+                : "Cobrar Entrega"}
+            </Button>
+          ),
         ]}
         width={600}
       >
@@ -1076,8 +1077,8 @@ const EntregasEncargado = () => {
                   <strong>Fecha:</strong>{" "}
                   {selectedEntrega.fechaCreacion
                     ? new Date(selectedEntrega.fechaCreacion).toLocaleString(
-                        "es-AR"
-                      )
+                      "es-AR"
+                    )
                     : ""}
                 </p>
               </div>
@@ -1087,10 +1088,10 @@ const EntregasEncargado = () => {
                   {selectedEntrega.estado === 5
                     ? "PAGO PARCIAL"
                     : selectedEntrega.estado === 3
-                    ? "PAGO OTRO DÍA"
-                    : selectedEntrega.estado === 2
-                    ? "COBRADA"
-                    : "PENDIENTE"}
+                      ? "PAGO OTRO DÍA"
+                      : selectedEntrega.estado === 2
+                        ? "COBRADA"
+                        : "PENDIENTE"}
                 </p>
                 {selectedEntrega.metodo_pago &&
                   selectedEntrega.estado !== 3 && (
@@ -1293,7 +1294,7 @@ const EntregasEncargado = () => {
                         Math.max(
                           0,
                           (selectedEntrega.monto || 0) -
-                            (selectedEntrega.monto_pagado || 0)
+                          (selectedEntrega.monto_pagado || 0)
                         );
                       setPaymentAmount(String(pendiente));
                     }
@@ -1370,8 +1371,8 @@ const EntregasEncargado = () => {
                 tooltip={
                   selectedEntrega?.estado === 5
                     ? `Pendiente: ${formatMoney(
-                        selectedEntrega?.resto_pendiente || 0
-                      )}`
+                      selectedEntrega?.resto_pendiente || 0
+                    )}`
                     : ""
                 }
               >
@@ -1380,8 +1381,8 @@ const EntregasEncargado = () => {
                   placeholder={
                     selectedEntrega?.estado === 5
                       ? `Ingrese el monto (Pendiente: ${formatMoney(
-                          selectedEntrega?.resto_pendiente || 0
-                        )})`
+                        selectedEntrega?.resto_pendiente || 0
+                      )})`
                       : "Ingrese el monto recibido"
                   }
                   value={paymentAmount}

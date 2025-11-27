@@ -60,7 +60,7 @@ const Entregas = () => {
     { id: 4, nombre: "TARJETA CREDITO" },
   ]);
   const initialized = useRef(false);
-
+  const wsBase = import.meta.env.VITE_WS_URL || "ws://localhost:3002";
   const [confirmEntregaVisible, setConfirmEntregaVisible] = useState(false);
   const [entregaAEntregar, setEntregaAEntregar] = useState(null);
 
@@ -189,7 +189,7 @@ const Entregas = () => {
     }
 
     // Crear conexión WebSocket
-    const ws = new WebSocket(`ws://localhost:3002/?cajaId=${cajaId}`);
+    const ws = new WebSocket(`${wsBase}/?cajaId=${cajaId}`);
     setSocket(ws);
 
     // Evento de conexión establecida
@@ -242,9 +242,8 @@ const Entregas = () => {
                 subTotal: detalle.subTotal,
                 producto: {
                   id: detalle.productoId,
-                  nombre: `${
-                    detalle.nombreProducto || detalle.producto?.nombre
-                  }`,
+                  nombre: `${detalle.nombreProducto || detalle.producto?.nombre
+                    }`,
                 },
               })),
               entregadaCuentaCorriente: !!ccEntregadas[venta.id],
@@ -285,9 +284,8 @@ const Entregas = () => {
                 subTotal: detalle.subTotal,
                 producto: {
                   id: detalle.productoId,
-                  nombre: `${
-                    detalle.nombreProducto || detalle.producto?.nombre
-                  }`,
+                  nombre: `${detalle.nombreProducto || detalle.producto?.nombre
+                    }`,
                 },
               })),
             };
@@ -305,9 +303,8 @@ const Entregas = () => {
             // Mostrar notificación
             notification.open({
               message: "Nueva venta registrada",
-              description: `Se ha registrado una nueva venta #${
-                nuevaVenta.numero
-              } por ${formatMoney(nuevaVenta.monto)}`,
+              description: `Se ha registrado una nueva venta #${nuevaVenta.numero
+                } por ${formatMoney(nuevaVenta.monto)}`,
               icon: <ShoppingCartOutlined style={{ color: "#1890ff" }} />,
               placement: "topRight",
               duration: 5,
@@ -717,7 +714,7 @@ const Entregas = () => {
             const totalPagado = Number(ventaActualizada.totalPagado || 0);
             const resto = Number(
               ventaActualizada.restoPendiente ??
-                Math.max(0, total - totalPagado)
+              Math.max(0, total - totalPagado)
             );
 
             return {
@@ -976,8 +973,8 @@ const Entregas = () => {
                         <span>
                           {entrega.fechaCreacion
                             ? new Date(entrega.fechaCreacion).toLocaleString(
-                                "es-AR"
-                              )
+                              "es-AR"
+                            )
                             : ""}
                         </span>
                       </div>
@@ -1014,14 +1011,14 @@ const Entregas = () => {
                       {(entrega.estado === 1 ||
                         entrega.estado === 3 ||
                         entrega.estado === 5) && (
-                        <Button
-                          type="primary"
-                          size="small"
-                          onClick={() => handleOpenPaymentModal(entrega)}
-                        >
-                          {entrega.estado === 5 ? "Completar Pago" : "Cobrar"}
-                        </Button>
-                      )}
+                          <Button
+                            type="primary"
+                            size="small"
+                            onClick={() => handleOpenPaymentModal(entrega)}
+                          >
+                            {entrega.estado === 5 ? "Completar Pago" : "Cobrar"}
+                          </Button>
+                        )}
                       {entrega.estado === 4 &&
                         !entrega.entregadaCuentaCorriente && (
                           <Button
@@ -1062,22 +1059,22 @@ const Entregas = () => {
             Cerrar
           </Button>,
           selectedEntrega &&
-            (selectedEntrega.estado === 1 ||
-              selectedEntrega.estado === 3 ||
-              selectedEntrega.estado === 5) && (
-              <Button
-                key="cobrar"
-                type="primary"
-                onClick={() => {
-                  handleCloseDetailsModal();
-                  handleOpenPaymentModal(selectedEntrega);
-                }}
-              >
-                {selectedEntrega.estado === 5
-                  ? "Completar Pago"
-                  : "Cobrar Entrega"}
-              </Button>
-            ),
+          (selectedEntrega.estado === 1 ||
+            selectedEntrega.estado === 3 ||
+            selectedEntrega.estado === 5) && (
+            <Button
+              key="cobrar"
+              type="primary"
+              onClick={() => {
+                handleCloseDetailsModal();
+                handleOpenPaymentModal(selectedEntrega);
+              }}
+            >
+              {selectedEntrega.estado === 5
+                ? "Completar Pago"
+                : "Cobrar Entrega"}
+            </Button>
+          ),
         ]}
         width={600}
       >
@@ -1099,8 +1096,8 @@ const Entregas = () => {
                   <strong>Fecha:</strong>{" "}
                   {selectedEntrega.fechaCreacion
                     ? new Date(selectedEntrega.fechaCreacion).toLocaleString(
-                        "es-AR"
-                      )
+                      "es-AR"
+                    )
                     : ""}
                 </p>
               </div>
@@ -1110,10 +1107,10 @@ const Entregas = () => {
                   {selectedEntrega.estado === 5
                     ? "PAGO PARCIAL"
                     : selectedEntrega.estado === 3
-                    ? "PAGO OTRO DÍA"
-                    : selectedEntrega.estado === 2
-                    ? "COBRADA"
-                    : "PENDIENTE"}
+                      ? "PAGO OTRO DÍA"
+                      : selectedEntrega.estado === 2
+                        ? "COBRADA"
+                        : "PENDIENTE"}
                 </p>
                 {selectedEntrega.metodo_pago &&
                   selectedEntrega.estado !== 3 && (
@@ -1324,10 +1321,10 @@ const Entregas = () => {
                   payLater
                     ? "Desactive 'Pagar otro día' para ingresar un monto"
                     : selectedEntrega?.estado === 5
-                    ? `Monto pendiente: ${formatMoney(
+                      ? `Monto pendiente: ${formatMoney(
                         selectedEntrega?.resto_pendiente || 0
                       )}`
-                    : ""
+                      : ""
                 }
               >
                 <Input
@@ -1335,8 +1332,8 @@ const Entregas = () => {
                   placeholder={
                     selectedEntrega?.estado === 5
                       ? `Ingrese el monto a pagar (Pendiente: ${formatMoney(
-                          selectedEntrega?.resto_pendiente || 0
-                        )})`
+                        selectedEntrega?.resto_pendiente || 0
+                      )})`
                       : "Ingrese el monto recibido"
                   }
                   value={paymentAmount}
@@ -1364,7 +1361,7 @@ const Entregas = () => {
             type="primary"
             loading={cierreLoading}
             onClick={handleCerrarCaja}
-            // Ya no es necesario deshabilitar por montoContado
+          // Ya no es necesario deshabilitar por montoContado
           >
             Confirmar Cierre
           </Button>,
@@ -1433,8 +1430,8 @@ const Entregas = () => {
         footer={null}
       >
         {detalleMetodo &&
-        detalleMetodo.detalles &&
-        detalleMetodo.detalles.length ? (
+          detalleMetodo.detalles &&
+          detalleMetodo.detalles.length ? (
           <ul style={{ paddingLeft: 16 }}>
             {detalleMetodo.detalles.map((valor, idx) => (
               <li key={idx}>${Number(valor).toLocaleString("es-AR")}</li>
