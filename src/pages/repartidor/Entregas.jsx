@@ -16,6 +16,7 @@ import {
   Badge,
   InputNumber,
   Select,
+  Tooltip,
 } from "antd";
 import {
   ShoppingCartOutlined,
@@ -71,6 +72,111 @@ const Entregas = () => {
   const [detalleMetodos, setDetalleMetodos] = useState([]);
   const [mostrarDetalleId, setMostrarDetalleId] = useState(null);
   const [totalesEntregas, setTotalesEntregas] = useState([]);
+  const [cierrePendiente, setCierrePendiente] = useState(false);
+
+  const [pagosVenta, setPagosVenta] = useState([]);
+  const [loadingPagos, setLoadingPagos] = useState(false);
+
+  const [detalleMetodo, setDetalleMetodo] = useState(null);
+
+  const [ccEntregadas, setCcEntregadas] = useState(() => {
+    try {
+      const raw = localStorage.getItem("ccEntregadas");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+  const refrescarTotalesCaja = async () => {
+    const cajaId = sessionStorage.getItem("cajaId");
+    if (!cajaId) return;
+
+    try {
+      const totales = await api("api/entregas/totales-dia-caja", "GET");
+      setTotalesEntregas(totales);
+    } catch (err) {
+      console.error("Error cargando totales de entregas:", err);
+    }
+  };
+  const hayDatosParaCerrar = () => {
+    const cajaId = Number(sessionStorage.getItem("cajaId"));
+    const resumen = totalesEntregas.find((t) => Number(t.cajaId) === cajaId);
+
+    if (!resumen) return false;
+
+    const totalEntregado = Number(resumen.totalEntregado || 0);
+    const totalCC = Number(resumen.totalCuentaCorriente || 0);
+
+    return totalEntregado > 0 || totalCC > 0;
+  };
+
+  // normaliza cualquier forma común de respuesta a: [{ nombre, total }, ...]
+  const normalizeMetodos = (resp, cajaId) => {
+    if (!resp) return [];
+    // Caso 1: [{ cajaId, metodosPago: [{nombre,total}]}]
+    const byCaja =
+      Array.isArray(resp) &&
+      resp.find((x) => Number(x.cajaId) === Number(cajaId));
+    if (byCaja?.metodosPago) return byCaja.metodosPago;
+
+    // Caso 2 (plano): [{ cajaId, nombre, total }, ...]
+    if (Array.isArray(resp)) {
+      const flat = resp
+        .filter(
+          (x) =>
+            Number(x.cajaId) === Number(cajaId) && x.nombre && x.total != null
+        )
+        .map(({ nombre, total }) => ({ nombre, total: Number(total) }));
+      if (flat.length) return flat;
+    }
+    return [];
+  };
+  // helper para mapear id->nombre (EFECTIVO/TRANSFERENCIA/etc)
+  const getCatalogoMetodos = async () => {
+    try {
+      const arr = await api("api/metodosPago", "GET");
+      // [{id, nombre}, ...]
+      const map = {};
+      (arr || []).forEach((m) => {
+        map[String(m.id)] = m.nombre;
+      });
+      return map;
+    } catch {
+      return {
+        1: "EFECTIVO",
+        2: "TRANSFERENCIA/QR",
+        3: "TARJETA DEBITO",
+        4: "TARJETA CREDITO",
+        5: "CHEQUE",
+      };
+    }
+  };
+
+  const sumarPorMetodoDesdeEntregas = (entregas, metodosMap) => {
+    const acc = {};
+    (entregas || []).forEach((e) => {
+      if (!e || e.monto == null) return;
+      const nombre = metodosMap?.[String(e.metodoPagoId)] || "DESCONOCIDO";
+      acc[nombre] = (acc[nombre] || 0) + Number(e.monto || 0);
+    });
+    // devuelve [{nombre,total}]
+    return Object.entries(acc).map(([nombre, total]) => ({ nombre, total }));
+  };
+  // Agrupa por método y acumula los importes como "detalles"
+  const agruparMetodosConDetalles = (lista = []) => {
+    const acc = {};
+    (lista || []).forEach((m) => {
+      if (!m) return;
+      const nombre = m.nombre || "DESCONOCIDO";
+      const monto = Number(m.total || 0);
+      if (!acc[nombre]) {
+        acc[nombre] = { nombre, total: 0, detalles: [] };
+      }
+      acc[nombre].total += monto;
+      acc[nombre].detalles.push(monto);
+    });
+    return Object.values(acc);
+  };
 
   // Configurar WebSocket
   useEffect(() => {
@@ -141,6 +247,7 @@ const Entregas = () => {
                   }`,
                 },
               })),
+              entregadaCuentaCorriente: !!ccEntregadas[venta.id],
             }));
 
             // Actualizamos la lista de entregas con los datos del WebSocket
@@ -271,28 +378,27 @@ const Entregas = () => {
     setMostrarDetalleId(cierreId);
   };
 
+  const getTotalesCaja = (cajaId) =>
+    totalesEntregas.find((t) => Number(t.cajaId) === Number(cajaId)) || null;
+
   const getMetodosPagoPorCaja = (cajaId) => {
-    // Debes tener los totales de entregas por método de pago en tu estado o calcularlos aquí
-    const encontrado = totalesEntregas.find((t) => t.cajaId === cajaId);
-    return encontrado?.metodosPago || [];
+    const t = getTotalesCaja(cajaId);
+    return t?.metodospago || []; // 👈 usa 'metodospago' (como lo devuelve tu API)
   };
 
   const handleAbrirCierreCaja = async () => {
     setCierreLoading(true);
     const cajaId = sessionStorage.getItem("cajaId");
     try {
-      // Trae info de la caja y el total entregado del día
       const [caja, totales] = await Promise.all([
         api(`api/caja/${cajaId}`, "GET"),
         api("api/entregas/totales-dia-caja", "GET"),
       ]);
       const totalSistema =
         totales.find((t) => t.cajaId === Number(cajaId))?.totalEntregado || 0;
-      setCajaInfo({
-        ...caja,
-        totalSistema,
-      });
-      setTotalesEntregas(totales); // <--- AGREGA ESTA LÍNEA
+
+      setCajaInfo({ ...caja, totalSistema });
+      setTotalesEntregas(totales); // 👈 necesario para el cierre
       setModalCierreVisible(true);
     } catch (err) {
       setCierreNotification({
@@ -303,33 +409,47 @@ const Entregas = () => {
     setCierreLoading(false);
   };
   const handleCerrarCaja = async () => {
+    if (!cajaInfo) return;
+
     setCierreLoading(true);
 
-    const metodosPago = getMetodosPagoPorCaja(cajaInfo.id) || [];
-
-    const totalEfectivo = metodosPago
-      .filter((m) => m.nombre.toLowerCase() === "efectivo")
-      .reduce((acc, m) => acc + (m.total || 0), 0);
-
-    const payload = {
-      cajaId: cajaInfo.id,
-      totalVentas: cajaInfo.totalSistema,
-      totalEfectivo: totalEfectivo,
-      totalPagado: cajaInfo.totalSistema,
-      ingresoLimpio: 0,
-      estado: 0,
-      metodosPago: metodosPago.map((m) => ({
-        nombre: m.nombre,
-        total: m.total,
-      })),
-    };
-
-    // Mostramos los datos por consola antes de enviarlos
-    console.log("Datos para cierre:", payload);
-
     try {
-      await api("api/cierre-caja", "POST", payload);
+      const usuarioId = Number(sessionStorage.getItem("usuarioId"));
+      const cajaId = Number(cajaInfo.id);
 
+      // 3) Resumen de ENTREGAS reales del día para esta caja (ya respeta el último cierre)
+      const resumenCaja =
+        totalesEntregas.find((t) => Number(t.cajaId) === cajaId) || {};
+
+      const totalEntregado = Number(resumenCaja.totalEntregado || 0);
+      const totalEfectivo = Number(resumenCaja.totalEfectivo || 0);
+      const totalCuentaCorriente = Number(
+        resumenCaja.totalCuentaCorriente || 0
+      );
+      const totalVentas = totalEntregado + totalCuentaCorriente;
+      const metodosPago =
+        resumenCaja.metodospago || resumenCaja.metodosPago || [];
+      const totalPagado = totalEntregado;
+
+      const payload = {
+        usuarioId,
+        cajaId,
+        totalVentas,
+        totalPagado,
+        totalCuentaCorriente,
+        totalEfectivo,
+        ingresoLimpio: 0, // el repartidor no cuenta efectivo
+        estado: 0, // cierre preliminar
+        metodoPago: metodosPago.map((m) => ({
+          nombre: m.nombre,
+          total: m.total,
+        })),
+      };
+
+      console.log("Datos para cierre (repartidor):", payload);
+
+      await api("api/cierre-caja", "POST", payload);
+      setCierrePendiente(true);
       setCierreNotification({
         type: "success",
         message: "Cierre realizado correctamente",
@@ -355,15 +475,66 @@ const Entregas = () => {
         description: "Ocurrió un error al intentar cerrar la caja.",
         placement: "topRight",
       });
+    } finally {
+      setCierreLoading(false);
     }
-
-    setCierreLoading(false);
   };
 
   // Efecto para aplicar el filtro cuando cambia el estado del filtro o las entregas
   useEffect(() => {
     applyFilter(estadoFiltro);
   }, [estadoFiltro, entregas]);
+
+  useEffect(() => {
+    refrescarTotalesCaja();
+  }, []);
+
+  useEffect(() => {
+    const verificarCierrePendiente = async () => {
+      const cajaId = Number(sessionStorage.getItem("cajaId"));
+      if (!cajaId) return;
+
+      try {
+        const cierres = await api("api/cierres-caja", "GET");
+
+        const hoy = new Date();
+        const inicioDelDia = new Date(
+          hoy.getFullYear(),
+          hoy.getMonth(),
+          hoy.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
+        const finDelDia = new Date(
+          hoy.getFullYear(),
+          hoy.getMonth(),
+          hoy.getDate(),
+          23,
+          59,
+          59,
+          999
+        );
+
+        const cierrePend = cierres.find((c) => {
+          const fecha = new Date(c.fecha);
+          return (
+            Number(c.cajaId) === cajaId &&
+            c.estado === 0 && // pendiente
+            fecha >= inicioDelDia &&
+            fecha <= finDelDia
+          );
+        });
+
+        setCierrePendiente(!!cierrePend);
+      } catch (e) {
+        console.error("Error verificando cierre pendiente:", e);
+      }
+    };
+
+    verificarCierrePendiente();
+  }, []);
 
   // EntregaCuentaCorriente
   const handleEntregarCuentaCorriente = (entrega) => {
@@ -376,31 +547,37 @@ const Entregas = () => {
   const handleConfirmEntregar = async () => {
     if (!entregaAEntregar) return;
 
-    // Para CC dejala en estado 4
-    const estadoObjetivo = 4;
+    const ventaId = entregaAEntregar.id;
 
-    // Optimista en UI
-    const updatedEntregas = entregas.map((item) =>
-      item.id === entregaAEntregar.id
-        ? { ...item, estado: estadoObjetivo }
-        : item
+    // 1) Actualizo el estado local: marco esta CC como entregada
+    setEntregas((prev) =>
+      prev.map((item) =>
+        item.id === ventaId ? { ...item, entregadaCuentaCorriente: true } : item
+      )
     );
-    setEntregas(updatedEntregas);
+
+    setCcEntregadas((prev) => {
+      const next = { ...prev, [ventaId]: true };
+      localStorage.setItem("ccEntregadas", JSON.stringify(next));
+      return next;
+    });
 
     setConfirmEntregaVisible(false);
     setEntregaAEntregar(null);
 
-    // Llamada a la API (mismo endpoint que ya usás, pero con estado=4)
+    // 2) Llamada a la API (si querés seguir registrando el evento,
+    //    pero sin cambiar el estado real de la venta)
     await api(
-      `api/entregas/cambiarEstado?venta_id=${
-        entregaAEntregar.id
-      }&estado=${estadoObjetivo}&caja_id=${sessionStorage.getItem("cajaId")}`,
+      `api/entregas/cambiarEstado?venta_id=${ventaId}&estado=4&caja_id=${sessionStorage.getItem(
+        "cajaId"
+      )}`,
       "POST"
     );
-
+    await refrescarTotalesCaja();
     notification.success({
       message: "Pedido marcado en Cuenta Corriente",
-      description: "La venta quedó en estado de cuenta corriente.",
+      description:
+        "La venta quedó registrada como entregada en cuenta corriente.",
     });
   };
 
@@ -412,15 +589,34 @@ const Entregas = () => {
 
   // Ver detalles de la entrega
 
-  const handleViewDetails = (entrega) => {
+  const handleViewDetails = async (entrega) => {
     setSelectedEntrega(entrega);
     setDetailsModalVisible(true);
+
+    try {
+      setLoadingPagos(true);
+      const data = await api(`api/entregas/venta/${entrega.id}`, "GET");
+      setPagosVenta(
+        (data || []).map((e) => ({
+          id: e.id,
+          monto: e.monto,
+          metodo: e.metodopago?.nombre || "SIN MÉTODO",
+          fecha: e.fechaCreacion,
+        }))
+      );
+    } catch (err) {
+      console.error("Error cargando pagos de la venta:", err);
+      setPagosVenta([]);
+    } finally {
+      setLoadingPagos(false);
+    }
   };
 
   // Cerrar modal de detalles
   const handleCloseDetailsModal = () => {
     setDetailsModalVisible(false);
     setSelectedEntrega(null);
+    setPagosVenta([]);
   };
 
   // Abrir modal de pago
@@ -509,20 +705,42 @@ const Entregas = () => {
       );
       console.log("Respuesta de la API:", response);
 
-      // Actualizar la lista de entregas
-      const updatedEntregas = entregas.map((item) => {
-        if (item.id === selectedEntrega.id) {
-          // Calcular el monto pagado total y resto pendiente
+      const ventaActualizada = response?.data?.venta;
+
+      setEntregas((prev) =>
+        prev.map((item) => {
+          if (item.id !== selectedEntrega.id) return item;
+
+          // Si el backend mandó la venta actualizada, usamos eso
+          if (ventaActualizada) {
+            const total = Number(ventaActualizada.total ?? item.monto ?? 0);
+            const totalPagado = Number(ventaActualizada.totalPagado || 0);
+            const resto = Number(
+              ventaActualizada.restoPendiente ??
+                Math.max(0, total - totalPagado)
+            );
+
+            return {
+              ...item,
+              monto: total,
+              monto_pagado: totalPagado,
+              resto_pendiente: resto,
+              estado: ventaActualizada.estadoPago ?? item.estado,
+              metodo_pago: payLater ? "PENDIENTE_OTRO_DIA" : paymentMethod,
+            };
+          }
+
+          // Fallback: si por algún motivo no viene ventaActualizada,
+          // usamos la lógica vieja.
           const montoPagado = payLater
             ? 0
             : parseFloat(paymentAmount) + (item.monto_pagado || 0);
           const restoPendiente = Math.max(0, item.monto - montoPagado);
 
-          // Determinar el nuevo estado
           let nuevoEstado;
           if (payLater) {
-            nuevoEstado = 3; // Pago otro día
-          } else if (restoPendiente > 0) {
+            nuevoEstado = 3; // Pago aplazado
+          } else if (isParcial) {
             nuevoEstado = 5; // Pago parcial
           } else {
             nuevoEstado = 2; // Cobrada completamente
@@ -535,11 +753,8 @@ const Entregas = () => {
             monto_pagado: montoPagado,
             resto_pendiente: restoPendiente,
           };
-        }
-        return item;
-      });
-
-      setEntregas(updatedEntregas);
+        })
+      );
 
       // Eliminar el ID de la venta de newVentasIds cuando se procesa el pago
       if (newVentasIds.includes(selectedEntrega.id)) {
@@ -570,6 +785,7 @@ const Entregas = () => {
           parseFloat(paymentAmount)
         )}`;
       }
+      await refrescarTotalesCaja();
 
       notification.success({
         message: notificationMessage,
@@ -669,13 +885,21 @@ const Entregas = () => {
           <h1 className="text-3xl font-bold text-blue-700 text-center mb-6">
             Entregas Pendientes
           </h1>
-          <Button
-            type="primary"
-            onClick={handleAbrirCierreCaja}
-            className="mb-4 "
+          <Tooltip
+            title={
+              !hayDatosParaCerrar()
+                ? "No hay entregas ni cuenta corriente para cerrar."
+                : ""
+            }
           >
-            Cerrar Caja
-          </Button>
+            <Button
+              type="primary"
+              onClick={handleAbrirCierreCaja}
+              disabled={cierrePendiente || !hayDatosParaCerrar()}
+            >
+              Cerrar Caja
+            </Button>
+          </Tooltip>
         </div>
 
         <div className="flex justify-between items-center mb-4">
@@ -798,15 +1022,25 @@ const Entregas = () => {
                           {entrega.estado === 5 ? "Completar Pago" : "Cobrar"}
                         </Button>
                       )}
-                      {entrega.estado === 4 && (
-                        <Button
-                          type="primary"
-                          size="small"
-                          onClick={() => handleEntregarCuentaCorriente(entrega)}
-                        >
-                          Entregar
-                        </Button>
-                      )}
+                      {entrega.estado === 4 &&
+                        !entrega.entregadaCuentaCorriente && (
+                          <Button
+                            type="primary"
+                            size="small"
+                            onClick={() =>
+                              handleEntregarCuentaCorriente(entrega)
+                            }
+                          >
+                            Entregar
+                          </Button>
+                        )}
+
+                      {entrega.estado === 4 &&
+                        entrega.entregadaCuentaCorriente && (
+                          <Tag icon={<CheckCircleOutlined />} color="blue">
+                            ENTREGADA
+                          </Tag>
+                        )}
                     </div>
                   </div>
                 </div>
@@ -936,6 +1170,36 @@ const Entregas = () => {
                 </div>
               }
             />
+            <Divider>Pagos realizados</Divider>
+
+            {loadingPagos ? (
+              <Spin />
+            ) : pagosVenta.length === 0 ? (
+              <p className="text-gray-500 text-sm">
+                No hay pagos registrados para esta venta.
+              </p>
+            ) : (
+              <List
+                dataSource={pagosVenta}
+                renderItem={(pago) => (
+                  <List.Item key={pago.id}>
+                    <div className="flex w-full justify-between">
+                      <div>
+                        <div className="font-medium">{pago.metodo}</div>
+                        <div className="text-gray-500 text-xs">
+                          {pago.fecha
+                            ? new Date(pago.fecha).toLocaleString("es-AR")
+                            : ""}
+                        </div>
+                      </div>
+                      <div className="font-semibold">
+                        {formatMoney(pago.monto)}
+                      </div>
+                    </div>
+                  </List.Item>
+                )}
+              />
+            )}
           </div>
         )}
       </Modal>
@@ -1118,12 +1382,15 @@ const Entregas = () => {
             {/* Detalle de métodos de pago */}
             <Divider>Detalle por método de pago</Divider>
             <ul style={{ paddingLeft: 0, listStyle: "none" }}>
-              {(getMetodosPagoPorCaja(cajaInfo.id) || []).map((m) => (
+              {agruparMetodosConDetalles(
+                getMetodosPagoPorCaja(cajaInfo.id) || []
+              ).map((m) => (
                 <li
                   key={m.nombre}
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
+                    alignItems: "center",
                     marginBottom: 4,
                   }}
                 >
@@ -1131,6 +1398,14 @@ const Entregas = () => {
                   <span style={{ fontWeight: "bold" }}>
                     ${m.total.toLocaleString("es-AR")}
                   </span>
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => setDetalleMetodo(m)}
+                    style={{ paddingLeft: 8 }}
+                  >
+                    Ver detalles
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -1145,6 +1420,28 @@ const Entregas = () => {
             showIcon
             className="mt-2"
           />
+        )}
+      </Modal>
+      <Modal
+        open={!!detalleMetodo}
+        title={
+          detalleMetodo
+            ? `Detalle de ${detalleMetodo.nombre}`
+            : "Detalle de método de pago"
+        }
+        onCancel={() => setDetalleMetodo(null)}
+        footer={null}
+      >
+        {detalleMetodo &&
+        detalleMetodo.detalles &&
+        detalleMetodo.detalles.length ? (
+          <ul style={{ paddingLeft: 16 }}>
+            {detalleMetodo.detalles.map((valor, idx) => (
+              <li key={idx}>${Number(valor).toLocaleString("es-AR")}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>No hay detalles para este método.</p>
         )}
       </Modal>
     </div>

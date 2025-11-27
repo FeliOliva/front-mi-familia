@@ -42,7 +42,7 @@ const Login = () => {
 
       message.success("Inicio de sesión exitoso");
 
-      navigate("/clientes");
+      navigate("/ventas");
       window.location.reload();
     } catch (error) {
       message.error(error.message);

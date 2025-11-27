@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   Table,
   message,
@@ -34,6 +34,36 @@ import {
 import dayjs from "dayjs";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+const CART_KEY = "mf_cart_venta_v1";
+
+const readCartDraft = () => {
+  try {
+    const raw = localStorage.getItem(CART_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeCartDraft = (items = []) => {
+  try {
+    localStorage.setItem(CART_KEY, JSON.stringify(items));
+  } catch {}
+};
+
+const clearCartDraft = () => {
+  try {
+    localStorage.removeItem(CART_KEY);
+  } catch {}
+};
+const normalizeDraftItem = (p) => ({
+  id: p.id,
+  nombre: p.nombre,
+  precio: Number(p.precio) || 0,
+  cantidad: Number(p.cantidad) || 0,
+  tipoUnidad: p.tipoUnidad || p._unidad || "UNIDAD",
+  _unidad: p.tipoUnidad || p._unidad || "UNIDAD",
+});
 
 const { Option } = Select;
 const getUnidad = (prod) =>
@@ -135,6 +165,7 @@ const generarPDF = async (venta) => {
 
   autoTable(doc, {
     head: [["PRODUCTO", "CANT.", "SUBTOTAL"]],
+
     body: productosData,
     startY: y,
     theme: "plain",
@@ -207,6 +238,64 @@ const Ventas = () => {
   const [showProductList, setShowProductList] = useState(false);
 
   const [hasInputFocus, setHasInputFocus] = useState(false);
+
+  // estados nuevos: cache de productos
+  const [todosLosProductos, setTodosLosProductos] = useState([]);
+  const [productosCargados, setProductosCargados] = useState(false);
+
+  // Negocio actual y flag de si permite editar precios
+  const negocioActual = negocios.find(
+    (n) => Number(n.id) === Number(selectedNegocio)
+  );
+  const negocioEsEditable = !!negocioActual?.esEditable;
+
+  const cartEffectInitialized = useRef(false);
+  const cargarProductos = async () => {
+    if (productosCargados) return; // ya están en memoria
+
+    try {
+      setLoadingProducts(true);
+      const res = await api("api/getAllProducts");
+      const productosRaw = res.products || [];
+
+      const activosOrdenados = productosRaw
+        .filter((p) => p.estado === 1)
+        .sort((a, b) =>
+          a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
+        )
+        .map((p) => ({
+          ...p,
+          _unidad: getUnidad(p),
+        }));
+
+      setTodosLosProductos(activosOrdenados);
+      setProductosCargados(true);
+    } catch (err) {
+      message.error("Error al cargar productos: " + err.message);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  useEffect(() => {
+    // Primera vez: no tocamos localStorage
+    if (!cartEffectInitialized.current) {
+      cartEffectInitialized.current = true;
+      return;
+    }
+
+    const compact = (productosSeleccionados || []).map((p) => ({
+      id: p.id,
+      nombre: p.nombre,
+      precio: Number(p.precio) || 0,
+      cantidad: Number(p.cantidad) || 0,
+      tipoUnidad: p.tipoUnidad || p._unidad || getUnidad(p),
+    }));
+
+    if (compact.length > 0) {
+      writeCartDraft(compact);
+    }
+  }, [productosSeleccionados]);
 
   // Cargar negocios
   const cargarNegocios = async () => {
@@ -296,58 +385,43 @@ const Ventas = () => {
     cargarCajas();
   }, [currentPage]);
 
-  const buscarProductos = async () => {
-    try {
-      setLoadingProducts(true);
-      const res = await api("api/getAllProducts");
-      const productos = res.products || [];
+  const buscarProductos = () => {
+    if (!productosCargados) return;
 
-      let filtrados;
+    const termino = productoBuscado.trim().toLowerCase();
 
-      if (productoBuscado.trim() === "") {
-        // Si no hay búsqueda, mostrar todos los productos activos ordenados alfabéticamente
-        filtrados = productos
-          .filter((producto) => producto.estado === 1)
-          .sort((a, b) =>
-            a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
-          );
-      } else {
-        // Si hay búsqueda, filtrar y ordenar alfabéticamente
-        filtrados = productos
-          .filter(
-            (producto) =>
-              producto.estado === 1 &&
-              producto.nombre
-                .toLowerCase()
-                .includes(productoBuscado.toLowerCase())
-          )
-          .sort((a, b) =>
-            a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
-          );
-      }
-      filtrados = filtrados.map((p) => ({
-        ...p,
-        _unidad: getUnidad(p), // normalizada
-      }));
-      setProductosDisponibles(filtrados);
-      setShowProductList(filtrados.length > 0);
-    } catch (err) {
-      message.error("Error al buscar productos: " + err.message);
-    } finally {
-      setLoadingProducts(false);
+    // ⚡ NO mostrar nada si no hay texto
+    if (termino === "") {
+      setProductosDisponibles([]);
+      setShowProductList(false);
+      return;
     }
+
+    // no buscar hasta tener al menos 2 letras
+    if (termino.length < 2) {
+      setProductosDisponibles([]);
+      setShowProductList(false);
+      return;
+    }
+
+    const filtrados = todosLosProductos
+      .filter((p) => p.nombre.toLowerCase().includes(termino))
+      .slice(0, 50); // máximo 50 mostrados
+
+    setProductosDisponibles(filtrados);
+    setShowProductList(filtrados.length > 0);
   };
 
   useEffect(() => {
-    if (hasInputFocus) {
-      if (productoBuscado.trim().length >= 0) {
-        buscarProductos();
-      } else {
-        setProductosDisponibles([]);
-        setShowProductList(false);
-      }
-    }
-  }, [productoBuscado, hasInputFocus]);
+    if (!hasInputFocus) return;
+    if (!productosCargados) return;
+
+    const handler = setTimeout(() => {
+      buscarProductos();
+    }, 200); // un poco más ágil
+
+    return () => clearTimeout(handler);
+  }, [productoBuscado, hasInputFocus, productosCargados]);
 
   const agregarProducto = (producto) => {
     if (!cantidad || cantidad <= 0) {
@@ -413,6 +487,16 @@ const Ventas = () => {
   const eliminarProducto = (index) => {
     const nuevos = [...productosSeleccionados];
     nuevos.splice(index, 1);
+    clearCartDraft(index, 1);
+    setProductosSeleccionados(nuevos);
+  };
+
+  const actualizarPrecio = (index, nuevoPrecio) => {
+    const precioNum = Number(nuevoPrecio);
+    if (isNaN(precioNum) || precioNum <= 0) return;
+
+    const nuevos = [...productosSeleccionados];
+    nuevos[index].precio = precioNum;
     setProductosSeleccionados(nuevos);
   };
 
@@ -452,34 +536,42 @@ const Ventas = () => {
       }));
 
       const usuarioId = parseInt(sessionStorage.getItem("usuarioId"));
-
       const rolUsuario = parseInt(sessionStorage.getItem("rol") || "0");
 
-      const ventaData = {
-        id: ventaEditando?.id,
+      // Payload base, común a crear y editar
+      const payloadBase = {
         nroVenta,
         negocioId: parseInt(selectedNegocio),
         cajaId: parseInt(selectedCaja),
-        rol_usuario: rolUsuario,
-        usuarioId,
         detalles,
       };
+
+      if (ventaEditando) {
+        // 🔹 EDITAR VENTA
+        await api(`api/ventas/${ventaEditando.id}`, "PUT", payloadBase);
+        message.success("Venta editada con éxito");
+      } else {
+        // 🔹 CREAR VENTA
+        await api("api/ventas", "POST", {
+          ...payloadBase,
+          rol_usuario: rolUsuario,
+          usuarioId,
+        });
+        message.success("Venta guardada con éxito");
+      }
 
       // Guardar la caja seleccionada en sessionStorage
       sessionStorage.setItem("cajaId", selectedCaja.toString());
 
-      await api("api/ventas", "POST", ventaData);
-
-      message.success(
-        ventaEditando ? "Venta editada con éxito" : "Venta guardada con éxito"
-      );
-
+      // limpiar estado local
+      clearCartDraft();
       setModalVisible(false);
       setVentaEditando(null);
       setProductosSeleccionados([]);
       setSelectedNegocio(null);
 
-      fetchVentas(currentPage); // Recargar ventas
+      // Recargar lista
+      fetchVentas(currentPage);
     } catch (err) {
       message.error("Error al guardar venta: " + err.message);
     } finally {
@@ -489,7 +581,6 @@ const Ventas = () => {
 
   const editarVenta = async (venta) => {
     try {
-      // Cargar negocios y cajas si aún no se han cargado
       if (negocios.length === 0) {
         await cargarNegocios();
       }
@@ -497,13 +588,12 @@ const Ventas = () => {
         await cargarCajas();
       }
 
-      setSelectedNegocio(venta.negocioId);
+      // Soportar ambas formas: negocioId directo o dentro de negocio
+      setSelectedNegocio(venta.negocioId || venta.negocio?.id);
       setSelectedCaja(venta.cajaId || null);
 
-      // 1. Obtener detalles de productos
       const detalles = venta.detalles || [];
-
-      // 2. Pedir la info de cada producto por su id
+      clearCartDraft();
       const productosInfo = await Promise.all(
         detalles.map(async (detalle) => {
           const producto = await api(`api/products/${detalle.productoId}`);
@@ -515,10 +605,7 @@ const Ventas = () => {
         })
       );
 
-      // 3. Setear productos seleccionados
       setProductosSeleccionados(productosInfo);
-
-      // Guardar la venta que se está editando
       setVentaEditando(venta);
       setModalVisible(true);
     } catch (error) {
@@ -536,7 +623,6 @@ const Ventas = () => {
       message.error("Error al eliminar la venta: " + error.message);
     }
   };
-
   // Ver detalle de venta
   const handleVerDetalle = (record) => {
     const venta = record; // ya tiene cantidadConUnidad
@@ -706,9 +792,35 @@ const Ventas = () => {
           </Button>
         </div>
 
-        <div style={{ color: "#666", marginBottom: "6px" }}>
-          {item.tipoUnidad || item._unidad || "UNIDAD"} - $
-          {item.precio.toLocaleString("es-AR")} c/u
+        <div
+          style={{
+            color: "#666",
+            marginBottom: "6px",
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
+          <span>{item.tipoUnidad || item._unidad || "UNIDAD"}</span>
+          {negocioEsEditable ? (
+            <>
+              <span>Precio:</span>
+              <InputNumber
+                min={0}
+                step={10}
+                value={item.precio}
+                onChange={(value) => actualizarPrecio(index, value)}
+                size={isMobile ? "small" : "middle"}
+                formatter={(val) =>
+                  val != null ? `$ ${Number(val).toLocaleString("es-AR")}` : ""
+                }
+                parser={(val) => (val || "").replace(/[^\d]/g, "")}
+                style={{ width: isMobile ? 110 : 130 }}
+              />
+            </>
+          ) : (
+            <span>- ${item.precio.toLocaleString("es-AR")} c/u</span>
+          )}
         </div>
 
         <div
@@ -725,14 +837,20 @@ const Ventas = () => {
               onClick={() => modificarCantidad(index, -0.5)} // Cambiar incremento
             />
             <InputNumber
-              min={getStepByUnidad(unidadSeleccionada || "UNIDAD")}
-              step={getStepByUnidad(unidadSeleccionada || "UNIDAD")}
-              precision={getUnidad(unidadSeleccionada) === "KG" ? 2 : 0}
-              value={cantidad}
-              onChange={(value) => setCantidad(value)}
-              addonBefore="Cant."
-              style={{ width: "100%" }}
+              min={getStepByUnidad(item._unidad || item.tipoUnidad || "UNIDAD")}
+              step={getStepByUnidad(
+                item._unidad || item.tipoUnidad || "UNIDAD"
+              )}
+              precision={
+                (item._unidad || item.tipoUnidad || "UNIDAD").toUpperCase() ===
+                "KG"
+                  ? 2
+                  : 0
+              }
+              value={item.cantidad}
+              onChange={(value) => actualizarCantidad(index, value)}
               size={isMobile ? "middle" : "large"}
+              style={{ width: "80px", margin: "0 4px" }}
             />
 
             <Button
@@ -764,7 +882,16 @@ const Ventas = () => {
           </h2>
           <Button
             type="primary"
-            onClick={() => setModalVisible(true)}
+            onClick={() => {
+              setModalVisible(true);
+              // si NO es edición de venta, carga el borrador si existe
+              if (!ventaEditando && productosSeleccionados.length === 0) {
+                const draft = readCartDraft();
+                if (Array.isArray(draft) && draft.length) {
+                  setProductosSeleccionados(draft.map(normalizeDraftItem));
+                }
+              }
+            }}
             icon={<PlusOutlined />}
           >
             Registrar Venta
@@ -829,9 +956,6 @@ const Ventas = () => {
         onCancel={() => {
           setModalVisible(false);
           setVentaEditando(null);
-          setProductosSeleccionados([]);
-          setSelectedNegocio(null);
-          // setEsVentaCuentaCorriente(false); // limpiar
         }}
         footer={[
           <Button key="cancelar" onClick={() => setModalVisible(false)}>
@@ -917,11 +1041,13 @@ const Ventas = () => {
                     suffixIcon={<BankOutlined />}
                     loading={loadingCajas}
                   >
-                    {cajas.map((caja) => (
-                      <Option key={caja.id} value={caja.id}>
-                        {caja.nombre}
-                      </Option>
-                    ))}
+                    {cajas
+                      .filter((caja) => Number(caja.id) !== 1) // ⬅️ oculta la caja id 0
+                      .map((caja) => (
+                        <Option key={caja.id} value={caja.id}>
+                          {caja.nombre}
+                        </Option>
+                      ))}
                   </Select>
                 </Form.Item>
               </Col>
@@ -957,22 +1083,17 @@ const Ventas = () => {
               <Row gutter={[8, 8]}>
                 <Col span={isMobile ? 22 : 18}>
                   <Input
-                    placeholder="Buscar producto o toca para ver todos"
+                    placeholder="Buscar producto (mínimo 2 letras) o tocar Ver todos"
                     value={productoBuscado}
                     onChange={(e) => setProductoBuscado(e.target.value)}
-                    onFocus={() => {
+                    onFocus={async () => {
                       setHasInputFocus(true);
-
-                      buscarProductos();
+                      await cargarProductos();
                     }}
                     prefix={<SearchOutlined style={{ color: "#1890ff" }} />}
                     style={{ width: "100%" }}
                     size={isMobile ? "middle" : "large"}
                     allowClear
-                    onClear={() => {
-                      setShowProductList(false);
-                      setHasInputFocus(false);
-                    }}
                   />
                 </Col>
                 <Col span={isMobile ? 14 : 6}>
@@ -986,6 +1107,20 @@ const Ventas = () => {
                     style={{ width: "100%" }}
                     size={isMobile ? "middle" : "large"}
                   />
+                </Col>
+                <Col span={isMobile ? 10 : 4}>
+                  <Button
+                    style={{ width: "100%" }}
+                    onClick={() => {
+                      setProductoBuscado("");
+                      cargarProductos().then(() => {
+                        setProductosDisponibles(todosLosProductos);
+                        setShowProductList(true);
+                      });
+                    }}
+                  >
+                    Ver todos
+                  </Button>
                 </Col>
               </Row>
 

@@ -29,9 +29,8 @@ const AppRouter = () => {
 
   // Definir permisos por rol
   const isAdmin = userRole === 0;
-  const isManager = userRole === 1;
-const isEncargadoVentas = userRole === 3; // <--- NUEVO
-const isDelivery = userRole >= 2 && userRole !== 3; // solo para repartidor
+  const isEncargadoVentas = userRole === 1; // <--- NUEVO
+  const isDelivery = userRole >= 2 && userRole !== 3; // solo para repartidor
 
   console.log("User Role:", userRole);
   useEffect(() => {
@@ -46,67 +45,74 @@ const isDelivery = userRole >= 2 && userRole !== 3; // solo para repartidor
   }, []);
 
   return (
-   <Router>
-    <Routes>
-      {isAuthenticated ? (
-        <>
-          {isDelivery && isMobile ? (
-            // Mobile view para repartidor
-            <>
-              <Route path="/repartidor" element={<Repartidor />} />
-              <Route path="/entregas" element={<Entregas />} />
-              <Route path="*" element={<Navigate to="/repartidor" />} />
-            </>
-          ) : (
-            // Vista escritorio (admin, manager o encargado de ventas)
-            <Route path="/" element={<MainLayout />}>
-              <Route index element={<Navigate to={"/ventas"} />} />
+    <Router>
+      <Routes>
+        {isAuthenticated ? (
+          <>
+            {isDelivery && isMobile ? (
+              // Mobile view para repartidor
+              <>
+                <Route path="/repartidor" element={<Repartidor />} />
+                <Route path="/entregas" element={<Entregas />} />
+                <Route path="*" element={<Navigate to="/repartidor" />} />
+              </>
+            ) : (
+              // Vista escritorio (admin, manager o encargado de ventas)
+              <Route path="/" element={<MainLayout />}>
+                <Route index element={<Navigate to={"/ventas"} />} />
 
-              {(isAdmin || isManager) && (
-                <>
-                  <Route path="productos" element={<Productos />} />
-                  <Route path="negocios" element={<Negocios />} />
-                  <Route path="resumenes" element={<Resumenes />} />
-                  <Route path="ventas" element={<Ventas />} />
-                  <Route path="caja" element={<Caja />} />
-                </>
-              )}
+                {isAdmin && (
+                  <>
+                    <Route path="productos" element={<Productos />} />
+                    <Route path="negocios" element={<Negocios />} />
+                    <Route path="resumenes" element={<Resumenes />} />
+                    <Route path="ventas" element={<Ventas />} />
+                    <Route path="caja" element={<Caja />} />
+                  </>
+                )}
 
-              {isEncargadoVentas && (
-                <>
-                  <Route path="productos" element={<Productos />} />
-                  <Route path="negocios" element={<Negocios />} />
-                  <Route path="ventas" element={<Ventas />} />
-                  <Route path="entregas-encargado" element={<EntregaEncargado />} />
-                  <Route path="cierre-caja" element={<CierreCajaEncargado />} />
-                  <Route path="*" element={<Navigate to="/ventas" />} />
-                </>
-              )}
+                {isEncargadoVentas && (
+                  <>
+                    <Route path="productos" element={<Productos />} />
+                    <Route path="negocios" element={<Negocios />} />
+                    <Route path="ventas" element={<Ventas />} />
+                    <Route
+                      path="entregas-encargado"
+                      element={<EntregaEncargado />}
+                    />
+                    {/* <Route
+                      path="cierre-caja"
+                      element={<CierreCajaEncargado />}
+                    /> */}
+                    <Route path="resumenes" element={<Resumenes />} />
+                    <Route path="*" element={<Navigate to="/ventas" />} />
+                  </>
+                )}
 
-              {/* Si no tiene permisos */}
-              {!(isAdmin || isManager || isEncargadoVentas) && (
-                <>
-                  <Route path="productos" element={<Unauthorized />} />
-                  <Route path="negocios" element={<Unauthorized />} />
-                  <Route path="resumenes" element={<Unauthorized />} />
-                  <Route path="ventas" element={<Unauthorized />} />
-                  <Route path="caja" element={<Unauthorized />} />
-                </>
-              )}
+                {/* Si no tiene permisos */}
+                {!(isAdmin || isEncargadoVentas) && (
+                  <>
+                    <Route path="productos" element={<Unauthorized />} />
+                    <Route path="negocios" element={<Unauthorized />} />
+                    <Route path="resumenes" element={<Unauthorized />} />
+                    <Route path="ventas" element={<Unauthorized />} />
+                    <Route path="caja" element={<Unauthorized />} />
+                  </>
+                )}
 
-              <Route path="*" element={<Navigate to="/ventas" />} />
-            </Route>
-          )}
-        </>
-      ) : (
-        // No autenticado
-        <>
-          <Route path="/login" element={<Login />} />
-          <Route path="*" element={<Navigate to="/login" />} />
-        </>
-      )}
-    </Routes>
-  </Router>
+                <Route path="*" element={<Navigate to="/ventas" />} />
+              </Route>
+            )}
+          </>
+        ) : (
+          // No autenticado
+          <>
+            <Route path="/login" element={<Login />} />
+            <Route path="*" element={<Navigate to="/login" />} />
+          </>
+        )}
+      </Routes>
+    </Router>
   );
 };
 

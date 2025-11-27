@@ -78,6 +78,8 @@ const Negocios = () => {
         await api(`api/negocio/${editingNegocio.id}`, "PUT", {
           nombre: values.nombre,
           direccion: values.direccion,
+          esCuentaCorriente: values.esCuentaCorriente,
+          esEditalble: values.esEditable,
           rol_usuario,
         });
 
@@ -86,7 +88,13 @@ const Negocios = () => {
         setNegocios((prev) =>
           prev.map((n) =>
             n.id === editingNegocio.id
-              ? { ...n, nombre: values.nombre, direccion: values.direccion }
+              ? {
+                  ...n,
+                  nombre: values.nombre,
+                  direccion: values.direccion,
+                  esCuentaCorriente: values.esCuentaCorriente,
+                  esEditable: values.esEditable,
+                }
               : n
           )
         );
@@ -168,6 +176,12 @@ const Negocios = () => {
       title: "Cuenta Corriente",
       dataIndex: "esCuentaCorriente",
       key: "esCuentaCorriente",
+      render: (v) => (v ? "Sí" : "No"),
+    },
+    {
+      title: "Cuent Editable",
+      dataIndex: "esEditable",
+      key: "esEditable",
       render: (v) => (v ? "Sí" : "No"),
     },
     {
@@ -318,6 +332,13 @@ const Negocios = () => {
               <Checkbox>Registrar como cuenta corriente</Checkbox>
             </Form.Item>
           )}
+          <Form.Item
+            name="esEditable"
+            valuePropName="checked"
+            initialValue={false}
+          >
+            <Checkbox>Registrar como cuenta editable</Checkbox>
+          </Form.Item>
         </Form>
       </Modal>
     </div>

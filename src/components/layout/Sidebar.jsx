@@ -9,6 +9,7 @@ import {
   FileTextOutlined,
   ShoppingOutlined,
   ShopOutlined,
+  BookOutlined,
 } from "@ant-design/icons";
 import { Layout, Menu, Button, theme, Drawer } from "antd";
 import { Link, Outlet, useLocation } from "react-router-dom";
@@ -55,6 +56,8 @@ const MainLayout = () => {
         return "Resumenes";
       case "/caja":
         return "Cierre de Caja";
+      case "/entregas-encargado":
+        return "EntregaEncargado";
       default:
         return "";
     }
@@ -63,13 +66,12 @@ const MainLayout = () => {
   const MainMenuItems = () => {
     const userRole = Number(sessionStorage.getItem("rol"));
     const isAdmin = userRole === 0;
-    const isManager = userRole === 1;
-    const isEncargadoVentas = userRole === 3;
+    const isEncargadoVentas = userRole === 1;
     const isDelivery = userRole >= 2 && userRole !== 3;
 
     return (
       <Menu theme="dark" mode="inline" selectedKeys={[location.pathname]}>
-        {(isAdmin || isManager) && (
+        {isAdmin && (
           <>
             <Menu.Item key="/ventas" icon={<DollarOutlined />}>
               <Link
@@ -95,7 +97,7 @@ const MainLayout = () => {
                 Negocios
               </Link>
             </Menu.Item>
-            <Menu.Item key="/resumenes" icon={<FileTextOutlined />}>
+            <Menu.Item key="/resumenes" icon={<BookOutlined />}>
               <Link
                 to="/resumenes"
                 onClick={() => isMobile && setMobileDrawerOpen(false)}
@@ -114,35 +116,58 @@ const MainLayout = () => {
           </>
         )}
 
-         {isEncargadoVentas && (
-        <>
-          <Menu.Item key="/ventas" icon={<DollarOutlined />}>
-            <Link to="/ventas" onClick={() => isMobile && setMobileDrawerOpen(false)}>
-              Ventas
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="/productos" icon={<ShoppingOutlined />}>
-            <Link to="/productos" onClick={() => isMobile && setMobileDrawerOpen(false)}>
-              Productos
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="/negocios" icon={<ShopOutlined />}>
-            <Link to="/negocios" onClick={() => isMobile && setMobileDrawerOpen(false)}>
-              Negocios
-            </Link>
-          </Menu.Item>
-          <Menu.Item key="/entregas-encargado" icon={<FileTextOutlined />}>
-            <Link to="/entregas-encargado" onClick={() => isMobile && setMobileDrawerOpen(false)}>
-              Entregas
-            </Link>
-          </Menu.Item>
-              <Menu.Item key="/cierre-caja-encargado" icon={<UserOutlined />}>
-      <Link to="/cierre-caja" onClick={() => isMobile && setMobileDrawerOpen(false)}>
-        Cierre de Caja
-      </Link>
-    </Menu.Item>
-        </>
-      )}
+        {isEncargadoVentas && (
+          <>
+            <Menu.Item key="/ventas" icon={<DollarOutlined />}>
+              <Link
+                to="/ventas"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Ventas
+              </Link>
+            </Menu.Item>
+            <Menu.Item key="/productos" icon={<ShoppingOutlined />}>
+              <Link
+                to="/productos"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Productos
+              </Link>
+            </Menu.Item>
+            <Menu.Item key="/negocios" icon={<ShopOutlined />}>
+              <Link
+                to="/negocios"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Negocios
+              </Link>
+            </Menu.Item>
+            <Menu.Item key="/entregas-encargado" icon={<FileTextOutlined />}>
+              <Link
+                to="/entregas-encargado"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Entregas
+              </Link>
+            </Menu.Item>
+            <Menu.Item key="/resumenes" icon={<BookOutlined />}>
+              <Link
+                to="/resumenes"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Resúmenes
+              </Link>
+            </Menu.Item>
+            {/* <Menu.Item key="/cierre-caja-encargado" icon={<UserOutlined />}>
+              <Link
+                to="/cierre-caja"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Cierre de Caja
+              </Link>
+            </Menu.Item> */}
+          </>
+        )}
 
         {isDelivery && (
           <>

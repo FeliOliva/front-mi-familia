@@ -5,8 +5,8 @@ import { api } from "../../services/api";
 
 const CierreCajaEncargado = () => {
   const [caja, setCaja] = useState(null);
-  const [totalSistema, setTotalSistema] = useState(0);
-  const [montoContado, setMontoContado] = useState("");
+  const [totalSistema, setTotalSistema] = useState(0); // total cobrado hoy
+  const [totalCuentaCorriente, setTotalCuentaCorriente] = useState(0);
   const [cierres, setCierres] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
@@ -14,7 +14,6 @@ const CierreCajaEncargado = () => {
 
   const cajaId = Number(sessionStorage.getItem("cajaId"));
   const usuarioId = Number(sessionStorage.getItem("usuarioId"));
-
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -22,15 +21,23 @@ const CierreCajaEncargado = () => {
       const cajaRes = await api(`api/caja/${cajaId}`, "GET");
       setCaja(cajaRes);
 
-      // Total sistema y métodos de pago
-      const totales = await api("api/entregas/totales-dia-caja");
-      const totalCaja = totales.find((t) => t.cajaId === cajaId);
-      setTotalSistema(totalCaja?.totalEntregado || 0);
-      setMetodosPago(totalCaja?.metodosPago || []);
+      // Totales del día por caja (mismo endpoint que usa el repartidor)
+      const totales = await api("api/entregas/totales-dia-caja", "GET");
+      const totalCaja =
+        totales.find((t) => Number(t.cajaId) === Number(cajaId)) || {};
 
-      // Historial de cierres
+      // En este contexto:
+      // totalEntregado = TODO lo cobrado hoy (cualquier método)
+      // totalCuentaCorriente = ventas en estado 4 (CC)
+      setTotalSistema(Number(totalCaja.totalEntregado || 0));
+      setTotalCuentaCorriente(Number(totalCaja.totalCuentaCorriente || 0));
+
+      // Puede venir metodosPago o metodospago según tu API
+      setMetodosPago(totalCaja.metodosPago || totalCaja.metodospago || []);
+
+      // Historial de cierres de esta caja + usuario
       setLoadingHistorial(true);
-      const cierresRes = await api("api/cierres-caja");
+      const cierresRes = await api("api/cierres-caja", "GET");
       setCierres(
         cierresRes.filter(
           (c) => c.cajaId === cajaId && c.usuarioId === usuarioId
@@ -38,6 +45,7 @@ const CierreCajaEncargado = () => {
       );
       setLoadingHistorial(false);
     } catch (err) {
+      console.error(err);
       notification.error({
         message: "Error",
         description: "No se pudieron cargar los datos de la caja.",
@@ -48,42 +56,51 @@ const CierreCajaEncargado = () => {
 
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line
   }, [cajaId, usuarioId]);
+  // Total de EFECTIVO según detalle de métodos
   const totalEfectivo = metodosPago
-    .filter((m) => m.nombre.toLowerCase() === "efectivo")
-    .reduce((acc, m) => acc + m.total, 0);
+    .filter((m) => (m.nombre || "").toLowerCase() === "efectivo")
+    .reduce((acc, m) => acc + Number(m.total || 0), 0);
 
   const handleCerrarCaja = async () => {
     setLoading(true);
-    console.log("Datos para cierre:", {
-      cajaId,
-      totalSistema,
-      totalEfectivo,
-      metodosPago,
-      usuarioId,
-    });
+
     try {
-      await api("api/cierre-caja", "POST", {
+      // totalVentas = todo lo vendido hoy = cobrado + cuenta corriente
+      const totalVentas =
+        Number(totalSistema || 0) + Number(totalCuentaCorriente || 0);
+
+      // totalPagado = todo lo cobrado (cualquier método)
+      const totalPagado = Number(totalSistema || 0);
+
+      const payload = {
+        usuarioId,
         cajaId,
-        totalVentas: totalSistema,
-        totalEfectivo: totalEfectivo,
-        totalPagado: totalSistema, // Usa el total del sistema como contado
-        ingresoLimpio: 0, // Diferencia siempre 0
-        metodosPago: metodosPago.map((m) => ({
+        totalVentas,
+        totalPagado,
+        totalCuentaCorriente,
+        totalEfectivo,
+        ingresoLimpio: 0, // el encargado no cuenta billetes acá
+        estado: 0, // igual que repartidor: pendiente / abierto
+        // IMPORTANTE: usar el mismo nombre de propiedad que en Entregas.jsx
+        metodoPago: metodosPago.map((m) => ({
           nombre: m.nombre,
-          total: m.total,
+          total: Number(m.total || 0),
         })),
-        estado: 0,
-      });
+      };
+
+      console.log("Datos cierre encargado:", payload);
+
+      await api("api/cierre-caja", "POST", payload);
+
       notification.success({
         message: "Cierre realizado",
         description: "El cierre de caja se guardó correctamente.",
       });
-      setCaja(null);
-      setTotalSistema(0);
+
       await fetchData();
     } catch (err) {
+      console.error(err);
       notification.error({
         message: "Error",
         description: "No se pudo realizar el cierre de caja.",
@@ -91,6 +108,7 @@ const CierreCajaEncargado = () => {
     }
     setLoading(false);
   };
+
   // Columnas para el historial
   const columns = [
     {
@@ -106,9 +124,15 @@ const CierreCajaEncargado = () => {
       render: (v) => `$${v}`,
     },
     {
-      title: "Contado",
+      title: "Cobrado (sistema)",
       dataIndex: "totalPagado",
       key: "totalPagado",
+      render: (v) => `$${v}`,
+    },
+    {
+      title: "Cuenta Corriente",
+      dataIndex: "totalCuentaCorriente",
+      key: "totalCuentaCorriente",
       render: (v) => `$${v}`,
     },
     {
@@ -116,7 +140,7 @@ const CierreCajaEncargado = () => {
       dataIndex: "ingresoLimpio",
       key: "ingresoLimpio",
       render: (v) => (
-        <span style={{ color: v === 0 ? "green" : "red" }}>${v}</span>
+        <span style={{ color: Number(v) === 0 ? "green" : "red" }}>${v}</span>
       ),
     },
     {
@@ -124,7 +148,7 @@ const CierreCajaEncargado = () => {
       dataIndex: "estado",
       key: "estado",
       render: (estado) =>
-        estado === "pendiente" ? (
+        Number(estado) === 0 ? (
           <span style={{ color: "#faad14" }}>Pendiente</span>
         ) : (
           <span style={{ color: "#52c41a" }}>Cerrado</span>
@@ -134,7 +158,7 @@ const CierreCajaEncargado = () => {
 
   return (
     <div className="max-w-xl mx-auto bg-white p-6 rounded shadow">
-      <h2 className="text-2xl font-bold mb-4">Cierre de Caja</h2>
+      <h2 className="text-2xl font-bold mb-4">Cierre de Caja (Encargado)</h2>
       {loading ? (
         <Spin />
       ) : (
@@ -143,9 +167,14 @@ const CierreCajaEncargado = () => {
             <strong>Caja:</strong> {caja?.nombre || "-"}
           </div>
           <div className="mb-2">
-            <strong>Total sistema:</strong> $
-            {totalSistema?.toLocaleString() || 0}
+            <strong>Total cobrado (sistema):</strong> $
+            {totalSistema?.toLocaleString("es-AR") || 0}
           </div>
+          <div className="mb-2">
+            <strong>Total en Cuenta Corriente:</strong> $
+            {totalCuentaCorriente?.toLocaleString("es-AR") || 0}
+          </div>
+
           <div className="mb-2">
             <h3 className="font-semibold mb-2">Detalle por método de pago:</h3>
             <ul style={{ paddingLeft: 0, listStyle: "none" }}>
@@ -161,12 +190,13 @@ const CierreCajaEncargado = () => {
                 >
                   <span className="capitalize">{m.nombre}</span>
                   <span style={{ fontWeight: "bold" }}>
-                    ${m.total?.toLocaleString("es-AR")}
+                    ${Number(m.total || 0).toLocaleString("es-AR")}
                   </span>
                 </li>
               ))}
             </ul>
           </div>
+
           <Button
             type="primary"
             onClick={handleCerrarCaja}
