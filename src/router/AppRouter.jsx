@@ -15,8 +15,8 @@ import Unauthorized from "../pages/Unauthorized";
 import Entregas from "../pages/repartidor/Entregas";
 import MainLayout from "../components/layout/Sidebar"; // Ajusta el path si es necesario
 import Caja from "../pages/admin/Caja";
-import EntregaEncargado from "../pages/encargadoVenta/EntregaEncargado";
-import CierreCajaEncargado from "../pages/encargadoVenta/cierreCaja";
+// import EntregaEncargado from "../pages/encargadoVenta/EntregaEncargado";
+// import CierreCajaEncargado from "../pages/encargadoVenta/cierreCaja";
 
 const AppRouter = () => {
   const token = sessionStorage.getItem("token");
@@ -76,10 +76,7 @@ const AppRouter = () => {
                     <Route path="productos" element={<Productos />} />
                     <Route path="negocios" element={<Negocios />} />
                     <Route path="ventas" element={<Ventas />} />
-                    <Route
-                      path="entregas-encargado"
-                      element={<EntregaEncargado />}
-                    />
+                    <Route path="entregas" element={<Entregas />} />
                     {/* <Route
                       path="cierre-caja"
                       element={<CierreCajaEncargado />}

@@ -60,6 +60,7 @@ const EntregasEncargado = () => {
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [orden, setOrden] = useState("desc");
   const [wsConnected, setWsConnected] = useState(false);
+  const [socket, setSocket] = useState(null);
   const [newVentasIds, setNewVentasIds] = useState([]);
   const [metodosPago, setMetodosPago] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState(null);
@@ -132,10 +133,10 @@ const EntregasEncargado = () => {
       prev.map((item) =>
         item.id === ventaId
           ? {
-            ...item,
-            estado: estadoObjetivo,
-            entregadaCuentaCorriente: true, // 👈 importante para ocultar el botón
-          }
+              ...item,
+              estado: estadoObjetivo,
+              entregadaCuentaCorriente: true, // 👈 importante para ocultar el botón
+            }
           : item
       )
     );
@@ -409,203 +410,236 @@ const EntregasEncargado = () => {
   };
 
   // ====== Carga inicial de ventas ======
-  useEffect(() => {
-    const cargarVentasIniciales = async () => {
-      setLoading(true);
-      try {
-        const cajaIdActual = Number(sessionStorage.getItem("cajaId"));
-        const userId = Number(sessionStorage.getItem("usuarioId"));
-        if (!Number.isFinite(cajaIdActual)) {
-          notification.error({ message: "Caja no seleccionada" });
-          setLoading(false);
-          return;
-        }
+  // useEffect(() => {
+  //   const cargarVentasIniciales = async () => {
+  //     setLoading(true);
+  //     try {
+  //       const cajaIdActual = Number(sessionStorage.getItem("cajaId"));
+  //       const userId = Number(sessionStorage.getItem("usuarioId"));
+  //       if (!Number.isFinite(cajaIdActual)) {
+  //         notification.error({ message: "Caja no seleccionada" });
+  //         setLoading(false);
+  //         return;
+  //       }
 
-        const data = await api("api/ventas");
-        let ventasFiltradas = data.ventas || data;
-        ventasFiltradas = (ventasFiltradas || []).filter(
-          (v) =>
-            Number(v.cajaId) === cajaIdActual && Number(v.usuarioId) === userId
-        );
+  //       const data = await api("api/ventas");
+  //       let ventasFiltradas = data.ventas || data;
+  //       ventasFiltradas = (ventasFiltradas || []).filter(
+  //         (v) =>
+  //           Number(v.cajaId) === cajaIdActual && Number(v.usuarioId) === userId
+  //       );
 
-        const normalizadas = (ventasFiltradas || []).map((v) => ({
-          id: v.id,
-          tipo: "Venta",
-          numero: v.nroVenta,
-          monto: v.total,
-          monto_pagado: v.totalPagado || 0,
-          resto_pendiente:
-            v.restoPendiente ??
-            Math.max(0, (v.total || 0) - (v.totalPagado || 0)),
-          metodo_pago: v.estadoPago === 1 ? null : "EFECTIVO",
-          estado: v.estadoPago,
-          fechaCreacion: v.fechaCreacion,
-          usuarioId: v.usuarioId,
-          cajaId: Number(v.cajaId),
-          negocio: { id: v.negocioId, nombre: v.negocio?.nombre || "" },
-          detalles: (v.detalles || []).map((d) => ({
-            id: d.id,
-            cantidad: d.cantidad,
-            precio: d.precio,
-            subTotal: d.subTotal ?? Number(d.cantidad) * Number(d.precio),
-            producto: {
-              id: d.productoId,
-              nombre: d.nombreProducto || d.producto?.nombre || "Producto",
-            },
-          })),
-          entregadaCuentaCorriente: !!ccEntregadas[v.id],
-        }));
+  //       const normalizadas = (ventasFiltradas || []).map((v) => ({
+  //         id: v.id,
+  //         tipo: "Venta",
+  //         numero: v.nroVenta,
+  //         monto: v.total,
+  //         monto_pagado: v.totalPagado || 0,
+  //         resto_pendiente:
+  //           v.restoPendiente ??
+  //           Math.max(0, (v.total || 0) - (v.totalPagado || 0)),
+  //         metodo_pago: v.estadoPago === 1 ? null : "EFECTIVO",
+  //         estado: v.estadoPago,
+  //         fechaCreacion: v.fechaCreacion,
+  //         usuarioId: v.usuarioId,
+  //         cajaId: Number(v.cajaId),
+  //         negocio: { id: v.negocioId, nombre: v.negocio?.nombre || "" },
+  //         detalles: (v.detalles || []).map((d) => ({
+  //           id: d.id,
+  //           cantidad: d.cantidad,
+  //           precio: d.precio,
+  //           subTotal: d.subTotal ?? Number(d.cantidad) * Number(d.precio),
+  //           producto: {
+  //             id: d.productoId,
+  //             nombre: d.nombreProducto || d.producto?.nombre || "Producto",
+  //           },
+  //         })),
+  //         entregadaCuentaCorriente: !!ccEntregadas[v.id],
+  //       }));
 
-        setEntregas(normalizadas);
-        setFilteredEntregas(normalizadas);
-      } catch (err) {
-        notification.error({
-          message: "Error cargando ventas",
-          description: err.message || "Intente nuevamente",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
+  //       setEntregas(normalizadas);
+  //       setFilteredEntregas(normalizadas);
+  //     } catch (err) {
+  //       notification.error({
+  //         message: "Error cargando ventas",
+  //         description: err.message || "Intente nuevamente",
+  //       });
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   };
 
-    if (userId) cargarVentasIniciales();
-  }, [userId, rol]);
+  //   if (userId) cargarVentasIniciales();
+  // }, [userId, rol]);
+  // Normaliza la venta que viene por WebSocket
+  const normalizarVentaWS = (venta, ccEntregadasMap = {}) => ({
+    id: venta.id,
+    tipo: "Venta",
+    numero: venta.nroVenta,
+    monto: venta.total,
+    monto_pagado: venta.totalPagado || 0,
+    resto_pendiente:
+      venta.restoPendiente ??
+      Math.max(0, (venta.total || 0) - (venta.totalPagado || 0)),
+    metodo_pago: venta.estadoPago === 1 ? null : "EFECTIVO", // 1 = pendiente
+    estado: venta.estadoPago,
+    fechaCreacion: venta.fechaCreacion,
+    usuarioId: venta.usuarioId,
+    cajaId: Number(venta.cajaId),
+    negocio: {
+      id: venta.negocio?.id || venta.negocioId,
+      nombre: venta.negocio?.nombre || `Negocio #${venta.negocioId}`,
+    },
+    detalles: (venta.detalles || []).map((detalle) => ({
+      id: detalle.id,
+      cantidad: detalle.cantidad,
+      precio: detalle.precio,
+      subTotal: detalle.subTotal,
+      producto: {
+        id: detalle.productoId,
+        // en el siguiente punto corregimos nombre/unidad
+        nombre:
+          detalle.nombreProducto || detalle.nombre || detalle.producto?.nombre,
+      },
+      unidad: detalle.unidad || detalle.producto?.unidad || null,
+    })),
+    entregadaCuentaCorriente: !!ccEntregadasMap[venta.id],
+  });
 
   // ====== WebSocket ======
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
-
     const cajaId = sessionStorage.getItem("cajaId");
     if (!cajaId) {
-      console.warn("No hay cajaId en sessionStorage");
+      console.error("No hay cajaId en sessionStorage");
       return;
     }
 
+    // Crear conexión WebSocket
     const ws = new WebSocket(`${wsBase}/?cajaId=${cajaId}`);
-    ws.onopen = () => setWsConnected(true);
-    ws.onerror = () => setWsConnected(false);
-    ws.onclose = () => setWsConnected(false);
+    setSocket(ws);
 
+    // Evento de conexión establecida
+    ws.onopen = () => {
+      console.log("Conexión WebSocket establecida");
+      setWsConnected(true);
+    };
+
+    // Evento de error de conexión
+    ws.onerror = (error) => {
+      console.error("Error en la conexión WebSocket:", error);
+      setWsConnected(false);
+    };
+
+    // Evento de cierre de conexión
+    ws.onclose = () => {
+      console.log("Conexión WebSocket cerrada");
+      setWsConnected(false);
+    };
+
+    // Evento de recepción de mensaje
     ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data);
+        const mensaje = JSON.parse(event.data);
+        console.log("Mensaje WebSocket recibido:", mensaje);
 
-        if (msg.tipo === "nueva-venta") {
-          if (rol !== 3 || msg.data?.usuarioId === userId) {
-            if (String(msg.data?.cajaId) !== String(cajaId)) return;
-            if (rol === 3 && msg.data?.usuarioId !== userId) return;
-            const v = msg.data;
-            const nueva = {
-              id: v.id,
-              tipo: "Venta",
-              numero: v.nroVenta,
-              monto: v.total,
-              monto_pagado: v.totalPagado || 0,
-              resto_pendiente:
-                v.restoPendiente ??
-                Math.max(0, (v.total || 0) - (v.totalPagado || 0)),
-              metodo_pago: v.estadoPago === 1 ? null : "EFECTIVO",
-              estado: v.estadoPago,
-              fechaCreacion: v.fechaCreacion,
-              usuarioId: v.usuarioId,
-              cajaId: Number(v.cajaId),
-              negocio: { id: v.negocioId, nombre: v.negocio?.nombre || "" },
-              detalles: (v.detalles || []).map((d) => ({
-                id: d.id,
-                cantidad: d.cantidad,
-                precio: d.precio,
-                subTotal: d.subTotal ?? Number(d.cantidad) * Number(d.precio),
-                producto: {
-                  id: d.productoId,
-                  nombre: d.nombreProducto || d.producto?.nombre || "Producto",
-                },
-              })),
-              entregadaCuentaCorriente: !!ccEntregadas[v.id],
-            };
+        // Procesamos el mensaje según su tipo
+        if (mensaje.tipo === "ventas-iniciales") {
+          // Si es la carga inicial de ventas, actualizamos el estado
+          if (mensaje.data && mensaje.data.length > 0) {
+            const nuevasVentas = mensaje.data.map((venta) =>
+              normalizarVentaWS(venta, ccEntregadas)
+            );
+            // Actualizamos la lista de entregas con los datos del WebSocket
+            setEntregas(nuevasVentas);
+            setFilteredEntregas(nuevasVentas);
+            // Cambiamos el estado de carga
+            setLoading(false);
+          } else {
+            // Si no hay ventas iniciales, simplemente quitamos el estado de carga
+            setLoading(false);
+          }
+        } else if (mensaje.tipo === "nueva-venta") {
+          if (mensaje.data) {
+            const nuevaVenta = normalizarVentaWS(mensaje.data, ccEntregadas);
 
-            setEntregas((prev) => [nueva, ...prev]);
-            setNewVentasIds((prev) => [...prev, nueva.id]);
-            applyFilter(estadoFiltro, [nueva, ...entregas]);
+            setEntregas((prevEntregas) => {
+              const next = [nuevaVenta, ...prevEntregas];
+              applyFilter(estadoFiltro, next);
+              return next;
+            });
+
+            setNewVentasIds((prevIds) => [...prevIds, nuevaVenta.id]);
 
             notification.open({
               message: "Nueva venta registrada",
-              description: `Venta #${nueva.numero} por ${formatMoney(
-                nueva.monto
-              )}`,
+              description: `Se ha registrado una nueva venta #${
+                nuevaVenta.numero
+              } por ${formatMoney(nuevaVenta.monto)}`,
               icon: <ShoppingCartOutlined style={{ color: "#1890ff" }} />,
+              placement: "topRight",
+              duration: 5,
             });
           }
-        }
-
-        if (
-          msg.tipo === "venta-actualizada" ||
-          msg.tipo === "venta-pagada" ||
-          msg.tipo === "venta-aplazada" ||
-          msg.tipo === "venta-pagada-parcialmente"
-        ) {
-          if (String(msg.data?.cajaId) !== String(cajaId)) return;
-          const v = msg.data;
-
-          // ⛔ IGNORAR si actualizamos esta venta hace menos de 1 segundo
-          if (
-            ventasRecienActualizadas[v.id] &&
-            Date.now() - ventasRecienActualizadas[v.id] < 1000
-          ) {
-            return; // evita pisar el estado local
-          }
-
-          // luego sí actualizar
-          setEntregas((prev) =>
-            prev.map((x) =>
-              x.id === v.id
-                ? {
-                  ...x,
-                  monto_pagado: v.totalPagado ?? x.monto_pagado,
-                  resto_pendiente:
-                    v.restoPendiente ??
-                    Math.max(
-                      0,
-                      (v.total || x.monto) -
-                      (v.totalPagado || x.monto_pagado || 0)
-                    ),
-                  estado: v.estadoPago ?? x.estado,
-                  metodo_pago: v.estadoPago === 1 ? null : x.metodo_pago,
-                  negocio: {
-                    id: v.negocioId,
-                    nombre: v.negocio?.nombre || x.negocio?.nombre || "",
-                  },
-                  cajaId: Number(v.cajaId ?? x.cajaId),
-                }
-                : x
-            )
-          );
-        }
-
-        if (msg.tipo === "venta-eliminada") {
-          const idEliminado = msg.data?.id;
+        } else if (mensaje.tipo === "venta-eliminada") {
+          const idEliminado = mensaje.data?.id;
           if (idEliminado) {
-            setEntregas((prev) => prev.filter((e) => e.id !== idEliminado));
-            setFilteredEntregas((prev) =>
-              prev.filter((e) => e.id !== idEliminado)
+            setEntregas((prevEntregas) =>
+              prevEntregas.filter(
+                (venta) => venta.id.toString() !== idEliminado.toString()
+              )
             );
-            setNewVentasIds((prev) => prev.filter((id) => id !== idEliminado));
+
+            // Actualizar las entregas filtradas también
+            setFilteredEntregas((prevFilteredEntregas) =>
+              prevFilteredEntregas.filter(
+                (venta) => venta.id.toString() !== idEliminado.toString()
+              )
+            );
+
+            // Eliminar de la lista de nuevas ventas si estaba allí
+            setNewVentasIds((prevIds) =>
+              prevIds.filter((id) => id.toString() !== idEliminado.toString())
+            );
+
             notification.warning({
               message: "Venta eliminada",
-              description: `Se eliminó la venta #${idEliminado}`,
+              description: `Se ha eliminado la venta con ID #${idEliminado}`,
               icon: <ReloadOutlined style={{ color: "#faad14" }} />,
+              placement: "topRight",
+              duration: 5,
             });
           }
+        } else if (mensaje.tipo === "venta-actualizada") {
+          const ventaActualizada = normalizeVentaWS(mensaje.data, ccEntregadas);
+
+          setEntregas((prev) => {
+            const next = prev.map((v) =>
+              v.id === ventaActualizada.id ? { ...v, ...ventaActualizada } : v
+            );
+            applyFilter(estadoFiltro, next);
+            return next;
+          });
+
+          // si justo esta venta está abierta en un modal → actualizar también:
+          setSelectedEntrega((prevSel) =>
+            prevSel && prevSel.id === ventaActualizada.id
+              ? { ...prevSel, ...ventaActualizada }
+              : prevSel
+          );
         }
-      } catch (e) {
-        console.error("WS parse error:", e);
+      } catch (error) {
+        console.error("Error al procesar mensaje WebSocket:", error);
       }
     };
 
     return () => {
-      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
     };
-  }, [estadoFiltro, entregas, rol, userId]);
+  }, []); // Este efecto solo se ejecuta una vez al montar el componente
 
   // ====== Filtros ======
   const applyFilter = (estado, list = entregas) => {
@@ -708,7 +742,7 @@ const EntregasEncargado = () => {
     const base =
       entrega.estado === 5
         ? entrega.resto_pendiente ??
-        Math.max(0, (entrega.monto || 0) - (entrega.monto_pagado || 0))
+          Math.max(0, (entrega.monto || 0) - (entrega.monto_pagado || 0))
         : entrega.monto || 0;
     setPaymentAmount(String(base));
     setPayLater(false);
@@ -747,8 +781,8 @@ const EntregasEncargado = () => {
           0,
           Number(
             ventaEnLista.resto_pendiente ??
-            Number(ventaEnLista.monto || 0) -
-            Number(ventaEnLista.monto_pagado || 0)
+              Number(ventaEnLista.monto || 0) -
+                Number(ventaEnLista.monto_pagado || 0)
           )
         );
         if (montoNum - pendiente > 1e-6) {
@@ -873,8 +907,8 @@ const EntregasEncargado = () => {
             cierrePendiente
               ? "Ya existe un cierre pendiente para esta caja. Debe ser finalizado por un administrador antes de generar otro."
               : !hayDatosParaCerrar()
-                ? "No hay entregas ni saldo de cuenta corriente para cerrar."
-                : ""
+              ? "No hay entregas ni saldo de cuenta corriente para cerrar."
+              : ""
           }
         >
           <Button
@@ -954,8 +988,8 @@ const EntregasEncargado = () => {
                         <span>
                           {entrega.fechaCreacion
                             ? new Date(entrega.fechaCreacion).toLocaleString(
-                              "es-AR"
-                            )
+                                "es-AR"
+                              )
                             : ""}
                         </span>
                       </div>
@@ -989,15 +1023,15 @@ const EntregasEncargado = () => {
                       {(entrega.estado === 1 ||
                         entrega.estado === 3 ||
                         entrega.estado === 5) && (
-                          <Button
-                            type="primary"
-                            size="small"
-                            onClick={() => handleOpenPaymentModal(entrega)}
-                            disabled={entrega.usuarioId !== userId}
-                          >
-                            {entrega.estado === 5 ? "Completar Pago" : "Cobrar"}
-                          </Button>
-                        )}
+                        <Button
+                          type="primary"
+                          size="small"
+                          onClick={() => handleOpenPaymentModal(entrega)}
+                          disabled={entrega.usuarioId !== userId}
+                        >
+                          {entrega.estado === 5 ? "Completar Pago" : "Cobrar"}
+                        </Button>
+                      )}
 
                       {entrega.estado === 4 &&
                         !entrega.entregadaCuentaCorriente && (
@@ -1039,23 +1073,23 @@ const EntregasEncargado = () => {
             Cerrar
           </Button>,
           selectedEntrega &&
-          (selectedEntrega.estado === 1 ||
-            selectedEntrega.estado === 3 ||
-            selectedEntrega.estado === 5) && (
-            <Button
-              key="cobrar"
-              type="primary"
-              onClick={() => {
-                handleCloseDetailsModal();
-                handleOpenPaymentModal(selectedEntrega);
-              }}
-              disabled={selectedEntrega.usuarioId !== userId}
-            >
-              {selectedEntrega.estado === 5
-                ? "Completar Pago"
-                : "Cobrar Entrega"}
-            </Button>
-          ),
+            (selectedEntrega.estado === 1 ||
+              selectedEntrega.estado === 3 ||
+              selectedEntrega.estado === 5) && (
+              <Button
+                key="cobrar"
+                type="primary"
+                onClick={() => {
+                  handleCloseDetailsModal();
+                  handleOpenPaymentModal(selectedEntrega);
+                }}
+                disabled={selectedEntrega.usuarioId !== userId}
+              >
+                {selectedEntrega.estado === 5
+                  ? "Completar Pago"
+                  : "Cobrar Entrega"}
+              </Button>
+            ),
         ]}
         width={600}
       >
@@ -1077,8 +1111,8 @@ const EntregasEncargado = () => {
                   <strong>Fecha:</strong>{" "}
                   {selectedEntrega.fechaCreacion
                     ? new Date(selectedEntrega.fechaCreacion).toLocaleString(
-                      "es-AR"
-                    )
+                        "es-AR"
+                      )
                     : ""}
                 </p>
               </div>
@@ -1088,10 +1122,10 @@ const EntregasEncargado = () => {
                   {selectedEntrega.estado === 5
                     ? "PAGO PARCIAL"
                     : selectedEntrega.estado === 3
-                      ? "PAGO OTRO DÍA"
-                      : selectedEntrega.estado === 2
-                        ? "COBRADA"
-                        : "PENDIENTE"}
+                    ? "PAGO OTRO DÍA"
+                    : selectedEntrega.estado === 2
+                    ? "COBRADA"
+                    : "PENDIENTE"}
                 </p>
                 {selectedEntrega.metodo_pago &&
                   selectedEntrega.estado !== 3 && (
@@ -1131,7 +1165,9 @@ const EntregasEncargado = () => {
                           "Producto"}
                       </div>
                       <div className="text-gray-600">
-                        {item.cantidad} x {formatMoney(item.precio)}
+                        {item.cantidad}{" "}
+                        {item.unidad ?? item.producto?.unidad ?? ""} x{" "}
+                        {formatMoney(item.precio)}{" "}
                       </div>
                     </div>
                     <div className="font-semibold">
@@ -1294,7 +1330,7 @@ const EntregasEncargado = () => {
                         Math.max(
                           0,
                           (selectedEntrega.monto || 0) -
-                          (selectedEntrega.monto_pagado || 0)
+                            (selectedEntrega.monto_pagado || 0)
                         );
                       setPaymentAmount(String(pendiente));
                     }
@@ -1371,8 +1407,8 @@ const EntregasEncargado = () => {
                 tooltip={
                   selectedEntrega?.estado === 5
                     ? `Pendiente: ${formatMoney(
-                      selectedEntrega?.resto_pendiente || 0
-                    )}`
+                        selectedEntrega?.resto_pendiente || 0
+                      )}`
                     : ""
                 }
               >
@@ -1381,8 +1417,8 @@ const EntregasEncargado = () => {
                   placeholder={
                     selectedEntrega?.estado === 5
                       ? `Ingrese el monto (Pendiente: ${formatMoney(
-                        selectedEntrega?.resto_pendiente || 0
-                      )})`
+                          selectedEntrega?.resto_pendiente || 0
+                        )})`
                       : "Ingrese el monto recibido"
                   }
                   value={paymentAmount}

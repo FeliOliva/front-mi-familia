@@ -142,9 +142,9 @@ const MainLayout = () => {
                 Negocios
               </Link>
             </Menu.Item>
-            <Menu.Item key="/entregas-encargado" icon={<FileTextOutlined />}>
+            <Menu.Item key="/entregas" icon={<FileTextOutlined />}>
               <Link
-                to="/entregas-encargado"
+                to="/entregas"
                 onClick={() => isMobile && setMobileDrawerOpen(false)}
               >
                 Entregas

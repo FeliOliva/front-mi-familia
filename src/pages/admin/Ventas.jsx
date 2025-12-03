@@ -283,7 +283,7 @@ const Ventas = () => {
       cartEffectInitialized.current = true;
       return;
     }
-
+    if (!modalVisible || ventaEditando) return;
     const compact = (productosSeleccionados || []).map((p) => ({
       id: p.id,
       nombre: p.nombre,
@@ -294,8 +294,11 @@ const Ventas = () => {
 
     if (compact.length > 0) {
       writeCartDraft(compact);
+    } else {
+      // si vaciás el carrito, borramos el borrador
+      clearCartDraft();
     }
-  }, [productosSeleccionados]);
+  }, [productosSeleccionados, ventaEditando, modalVisible]);
 
   // Cargar negocios
   const cargarNegocios = async () => {
@@ -487,7 +490,6 @@ const Ventas = () => {
   const eliminarProducto = (index) => {
     const nuevos = [...productosSeleccionados];
     nuevos.splice(index, 1);
-    clearCartDraft(index, 1);
     setProductosSeleccionados(nuevos);
   };
 
@@ -560,9 +562,6 @@ const Ventas = () => {
         message.success("Venta guardada con éxito");
       }
 
-      // Guardar la caja seleccionada en sessionStorage
-      sessionStorage.setItem("cajaId", selectedCaja.toString());
-
       // limpiar estado local
       clearCartDraft();
       setModalVisible(false);
@@ -588,12 +587,11 @@ const Ventas = () => {
         await cargarCajas();
       }
 
-      // Soportar ambas formas: negocioId directo o dentro de negocio
       setSelectedNegocio(venta.negocioId || venta.negocio?.id);
       setSelectedCaja(venta.cajaId || null);
 
       const detalles = venta.detalles || [];
-      clearCartDraft();
+
       const productosInfo = await Promise.all(
         detalles.map(async (detalle) => {
           const producto = await api(`api/products/${detalle.productoId}`);
@@ -605,8 +603,10 @@ const Ventas = () => {
         })
       );
 
-      setProductosSeleccionados(productosInfo);
+      // Primero marcamos que estamos editando
       setVentaEditando(venta);
+      // Después cargamos los productos: el efecto ya verá ventaEditando = true
+      setProductosSeleccionados(productosInfo);
       setModalVisible(true);
     } catch (error) {
       message.error("Error al cargar los datos de la venta: " + error.message);
@@ -866,7 +866,13 @@ const Ventas = () => {
       </div>
     </List.Item>
   );
-
+  const handleCerrarModal = () => {
+    if (ventaEditando) {
+      setProductosSeleccionados([]);
+    }
+    setModalVisible(false);
+    setVentaEditando(null);
+  };
   const ventasFiltradas =
     filtroCaja === "todas"
       ? ventas
@@ -953,12 +959,9 @@ const Ventas = () => {
           </div>
         }
         open={modalVisible}
-        onCancel={() => {
-          setModalVisible(false);
-          setVentaEditando(null);
-        }}
+        onCancel={handleCerrarModal}
         footer={[
-          <Button key="cancelar" onClick={() => setModalVisible(false)}>
+          <Button key="cancelar" onClick={handleCerrarModal}>
             Cancelar
           </Button>,
           <Button
@@ -1033,7 +1036,6 @@ const Ventas = () => {
                     value={selectedCaja}
                     onChange={(val) => {
                       setSelectedCaja(val);
-                      sessionStorage.setItem("cajaId", val.toString());
                     }}
                     disabled={!cajas.length || loadingCajas}
                     style={{ width: "100%" }}

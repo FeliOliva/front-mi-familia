@@ -17,6 +17,8 @@ import {
   InputNumber,
   Select,
   Tooltip,
+  DatePicker,
+  message,
 } from "antd";
 import {
   ShoppingCartOutlined,
@@ -58,6 +60,7 @@ const Entregas = () => {
     { id: 2, nombre: "TRANSFERENCIA/QR" },
     { id: 3, nombre: "TARJETA DEBITO" },
     { id: 4, nombre: "TARJETA CREDITO" },
+    { id: 5, nombre: "CHEQUE" },
   ]);
   const initialized = useRef(false);
   const wsBase = import.meta.env.VITE_WS_URL || "ws://localhost:3002";
@@ -67,10 +70,7 @@ const Entregas = () => {
   const [modalCierreVisible, setModalCierreVisible] = useState(false);
   const [cajaInfo, setCajaInfo] = useState(null);
   const [cierreLoading, setCierreLoading] = useState(false);
-  const [montoContado, setMontoContado] = useState("");
   const [cierreNotification, setCierreNotification] = useState(null);
-  const [detalleMetodos, setDetalleMetodos] = useState([]);
-  const [mostrarDetalleId, setMostrarDetalleId] = useState(null);
   const [totalesEntregas, setTotalesEntregas] = useState([]);
   const [cierrePendiente, setCierrePendiente] = useState(false);
 
@@ -78,6 +78,7 @@ const Entregas = () => {
   const [loadingPagos, setLoadingPagos] = useState(false);
 
   const [detalleMetodo, setDetalleMetodo] = useState(null);
+  const [ventasEspeciales, setVentasEspeciales] = useState([]);
 
   const [ccEntregadas, setCcEntregadas] = useState(() => {
     try {
@@ -87,6 +88,60 @@ const Entregas = () => {
       return {};
     }
   });
+  // Normaliza la venta que viene del WebSocket / API al shape que usa el front
+  const normalizarVentaWS = (venta, ccEntregadasMap = {}) => ({
+    id: venta.id,
+    tipo: "Venta",
+    numero: venta.nroVenta,
+    monto: venta.total,
+    monto_pagado: venta.totalPagado || 0,
+    resto_pendiente:
+      venta.restoPendiente ??
+      Math.max(0, (venta.total || 0) - (venta.totalPagado || 0)),
+    metodo_pago: venta.estadoPago === 1 ? null : "EFECTIVO", // 1 = pendiente
+    estado: venta.estadoPago,
+    fechaCreacion: venta.fechaCreacion,
+    negocio: {
+      id: venta.negocio?.id || venta.negocioId,
+      nombre: venta.negocio?.nombre || `Negocio #${venta.negocioId}`,
+    },
+    detalles: (venta.detalles || venta.detalleventa || []).map((detalle) => ({
+      id: detalle.id,
+      cantidad: detalle.cantidad,
+      precio: detalle.precio,
+      subTotal: detalle.subTotal,
+      producto: {
+        id: detalle.productoId,
+        nombre:
+          detalle.nombreProducto || detalle.nombre || detalle.producto?.nombre,
+      },
+    })),
+    entregadaCuentaCorriente: !!ccEntregadasMap[venta.id],
+    fueAplazadaOParcial: venta.fueAplazadaOParcial ?? false,
+  });
+
+  // ===== CHEQUE =====
+  const [chequeForm] = Form.useForm();
+
+  const esCheque = React.useMemo(() => {
+    const metodo = metodoPagos.find(
+      (m) => m.nombre?.toUpperCase() === paymentMethod
+    );
+    return metodo?.nombre?.toUpperCase() === "CHEQUE";
+  }, [paymentMethod, metodoPagos]);
+
+  const actualizarVentasEspeciales = (venta) => {
+    if (venta.fueAplazadaOParcial) {
+      setVentasEspeciales((prev) => {
+        const existe = prev.some((v) => v.id === venta.id);
+        if (!existe) return [...prev, venta];
+        return prev.map((v) => (v.id === venta.id ? venta : v));
+      });
+    } else {
+      setVentasEspeciales((prev) => prev.filter((v) => v.id !== venta.id));
+    }
+  };
+
   const refrescarTotalesCaja = async () => {
     const cajaId = sessionStorage.getItem("cajaId");
     if (!cajaId) return;
@@ -110,58 +165,6 @@ const Entregas = () => {
     return totalEntregado > 0 || totalCC > 0;
   };
 
-  // normaliza cualquier forma común de respuesta a: [{ nombre, total }, ...]
-  const normalizeMetodos = (resp, cajaId) => {
-    if (!resp) return [];
-    // Caso 1: [{ cajaId, metodosPago: [{nombre,total}]}]
-    const byCaja =
-      Array.isArray(resp) &&
-      resp.find((x) => Number(x.cajaId) === Number(cajaId));
-    if (byCaja?.metodosPago) return byCaja.metodosPago;
-
-    // Caso 2 (plano): [{ cajaId, nombre, total }, ...]
-    if (Array.isArray(resp)) {
-      const flat = resp
-        .filter(
-          (x) =>
-            Number(x.cajaId) === Number(cajaId) && x.nombre && x.total != null
-        )
-        .map(({ nombre, total }) => ({ nombre, total: Number(total) }));
-      if (flat.length) return flat;
-    }
-    return [];
-  };
-  // helper para mapear id->nombre (EFECTIVO/TRANSFERENCIA/etc)
-  const getCatalogoMetodos = async () => {
-    try {
-      const arr = await api("api/metodosPago", "GET");
-      // [{id, nombre}, ...]
-      const map = {};
-      (arr || []).forEach((m) => {
-        map[String(m.id)] = m.nombre;
-      });
-      return map;
-    } catch {
-      return {
-        1: "EFECTIVO",
-        2: "TRANSFERENCIA/QR",
-        3: "TARJETA DEBITO",
-        4: "TARJETA CREDITO",
-        5: "CHEQUE",
-      };
-    }
-  };
-
-  const sumarPorMetodoDesdeEntregas = (entregas, metodosMap) => {
-    const acc = {};
-    (entregas || []).forEach((e) => {
-      if (!e || e.monto == null) return;
-      const nombre = metodosMap?.[String(e.metodoPagoId)] || "DESCONOCIDO";
-      acc[nombre] = (acc[nombre] || 0) + Number(e.monto || 0);
-    });
-    // devuelve [{nombre,total}]
-    return Object.entries(acc).map(([nombre, total]) => ({ nombre, total }));
-  };
   // Agrupa por método y acumula los importes como "detalles"
   const agruparMetodosConDetalles = (lista = []) => {
     const acc = {};
@@ -218,127 +221,82 @@ const Entregas = () => {
 
         // Procesamos el mensaje según su tipo
         if (mensaje.tipo === "ventas-iniciales") {
-          // Si es la carga inicial de ventas, actualizamos el estado
           if (mensaje.data && mensaje.data.length > 0) {
-            // Transformar los datos para que coincidan con el formato esperado
-            const nuevasVentas = mensaje.data.map((venta) => ({
-              id: venta.id,
-              tipo: "Venta",
-              numero: venta.nroVenta,
-              monto: venta.total,
-              monto_pagado: venta.totalPagado,
-              resto_pendiente: venta.restoPendiente,
-              metodo_pago: venta.estadoPago === 1 ? null : "EFECTIVO", // 1 = pendiente
-              estado: venta.estadoPago,
-              fechaCreacion: venta.fechaCreacion,
-              negocio: {
-                id: venta.negocio?.id || venta.negocioId,
-                nombre: venta.negocio?.nombre || `Negocio #${venta.negocioId}`,
-              },
-              detalles: venta.detalles.map((detalle) => ({
-                id: detalle.id,
-                cantidad: detalle.cantidad,
-                precio: detalle.precio,
-                subTotal: detalle.subTotal,
-                producto: {
-                  id: detalle.productoId,
-                  nombre: `${detalle.nombreProducto || detalle.producto?.nombre
-                    }`,
-                },
-              })),
-              entregadaCuentaCorriente: !!ccEntregadas[venta.id],
-            }));
+            const nuevasVentas = mensaje.data.map((venta) =>
+              normalizarVentaWS(venta, ccEntregadas)
+            );
 
-            // Actualizamos la lista de entregas con los datos del WebSocket
+            nuevasVentas.forEach(actualizarVentasEspeciales);
+
             setEntregas(nuevasVentas);
             setFilteredEntregas(nuevasVentas);
-            // Cambiamos el estado de carga
             setLoading(false);
           } else {
-            // Si no hay ventas iniciales, simplemente quitamos el estado de carga
+            setEntregas([]);
+            setFilteredEntregas([]);
             setLoading(false);
           }
         } else if (mensaje.tipo === "nueva-venta") {
-          // Si es una nueva venta, la agregamos a la lista y mostramos notificación
           if (mensaje.data) {
-            const nuevaVenta = {
-              id: mensaje.data.id,
-              tipo: "Venta",
-              numero: mensaje.data.nroVenta,
-              monto: mensaje.data.total,
-              monto_pagado: mensaje.data.totalPagado,
-              resto_pendiente: mensaje.data.restoPendiente,
-              metodo_pago: mensaje.data.estadoPago === 1 ? null : "EFECTIVO",
-              estado: mensaje.data.estadoPago,
-              fechaCreacion: mensaje.data.fechaCreacion,
-              negocio: {
-                id: mensaje.data.negocio?.id || mensaje.data.negocioId,
-                nombre:
-                  mensaje.data.negocio?.nombre ||
-                  `Negocio #${mensaje.data.negocioId}`,
-              },
-              detalles: mensaje.data.detalles.map((detalle) => ({
-                id: detalle.id,
-                cantidad: detalle.cantidad,
-                precio: detalle.precio,
-                subTotal: detalle.subTotal,
-                producto: {
-                  id: detalle.productoId,
-                  nombre: `${detalle.nombreProducto || detalle.producto?.nombre
-                    }`,
-                },
-              })),
-            };
+            const nuevaVenta = normalizarVentaWS(mensaje.data, ccEntregadas);
 
-            // Añadir la nueva venta a la lista
             setEntregas((prevEntregas) => [nuevaVenta, ...prevEntregas]);
 
-            // Aplicar el filtro actual a las entregas actualizadas
             const updatedEntregas = [nuevaVenta, ...entregas];
             applyFilter(estadoFiltro, updatedEntregas);
 
-            // Marcar la venta como nueva
+            actualizarVentasEspeciales(nuevaVenta);
+
             setNewVentasIds((prevIds) => [...prevIds, nuevaVenta.id]);
 
-            // Mostrar notificación
             notification.open({
               message: "Nueva venta registrada",
-              description: `Se ha registrado una nueva venta #${nuevaVenta.numero
-                } por ${formatMoney(nuevaVenta.monto)}`,
+              description: `Se ha registrado una nueva venta #${
+                nuevaVenta.numero
+              } por ${formatMoney(nuevaVenta.monto)}`,
               icon: <ShoppingCartOutlined style={{ color: "#1890ff" }} />,
               placement: "topRight",
               duration: 5,
             });
           }
-        } else if (mensaje.tipo === "venta-eliminada") {
-          const idEliminado = mensaje.data?.id;
-          if (idEliminado) {
-            setEntregas((prevEntregas) =>
-              prevEntregas.filter(
-                (venta) => venta.id.toString() !== idEliminado.toString()
-              )
-            );
+        } else if (mensaje.tipo === "venta-actualizada") {
+          // Normalizamos lo que viene del backend
+          const ventaActualizada = normalizarVentaWS(
+            mensaje.data,
+            ccEntregadas
+          );
 
-            // Actualizar las entregas filtradas también
-            setFilteredEntregas((prevFilteredEntregas) =>
-              prevFilteredEntregas.filter(
-                (venta) => venta.id.toString() !== idEliminado.toString()
-              )
-            );
+          setEntregas((prev) => {
+            const next = prev.map((v) => {
+              if (v.id !== ventaActualizada.id) return v;
 
-            // Eliminar de la lista de nuevas ventas si estaba allí
-            setNewVentasIds((prevIds) =>
-              prevIds.filter((id) => id.toString() !== idEliminado.toString())
-            );
-
-            notification.warning({
-              message: "Venta eliminada",
-              description: `Se ha eliminado la venta con ID #${idEliminado}`,
-              icon: <ReloadOutlined style={{ color: "#faad14" }} />,
-              placement: "topRight",
-              duration: 5,
+              return {
+                ...v,
+                ...ventaActualizada,
+                // 👇 NO pisar nunca una CC ya marcada como entregada
+                entregadaCuentaCorriente:
+                  v.entregadaCuentaCorriente ||
+                  ventaActualizada.entregadaCuentaCorriente,
+              };
             });
-          }
+
+            applyFilter(estadoFiltro, next);
+            return next;
+          });
+
+          actualizarVentasEspeciales(ventaActualizada);
+
+          setSelectedEntrega((prevSel) =>
+            prevSel && prevSel.id === ventaActualizada.id
+              ? {
+                  ...prevSel,
+                  ...ventaActualizada,
+                  entregadaCuentaCorriente:
+                    prevSel.entregadaCuentaCorriente ||
+                    ventaActualizada.entregadaCuentaCorriente,
+                }
+              : prevSel
+          );
         }
       } catch (error) {
         console.error("Error al procesar mensaje WebSocket:", error);
@@ -365,16 +323,6 @@ const Entregas = () => {
   };
 
   // CAJA
-
-  const verDetalleMetodos = async (cierreId) => {
-    const data = await api(
-      `api/cierre-caja/${cierreId}/detalle-metodos`,
-      "GET"
-    );
-    setDetalleMetodos(data);
-    setMostrarDetalleId(cierreId);
-  };
-
   const getTotalesCaja = (cajaId) =>
     totalesEntregas.find((t) => Number(t.cajaId) === Number(cajaId)) || null;
 
@@ -453,6 +401,7 @@ const Entregas = () => {
       });
 
       setModalCierreVisible(false);
+      setVentasEspeciales([]);
 
       notification.success({
         message: "Caja cerrada",
@@ -639,6 +588,7 @@ const Entregas = () => {
   const handleClosePaymentModal = () => {
     setPaymentModalVisible(false);
     form.resetFields();
+    chequeForm.resetFields();
   };
 
   // Pagar otro día
@@ -662,6 +612,47 @@ const Entregas = () => {
       ) {
         setPaymentError("Por favor ingrese un monto válido");
         setProcessingPayment(false);
+        return;
+      }
+      // --- Si el método es CHEQUE ---
+      if (!payLater && esCheque) {
+        // Validar campos del formulario
+        const values = await chequeForm.validateFields();
+
+        const montoCheque = parseFloat(paymentAmount);
+
+        // Guardar cheque
+        await api("api/cheques", "POST", {
+          banco: values.banco,
+          nroCheque: values.nroCheque,
+          fechaEmision: values.fechaEmision.format("DD/MM/YYYY"),
+          fechaCobro: values.fechaCobro.format("DD/MM/YYYY"),
+          monto: montoCheque,
+          negocioId: selectedEntrega.negocio?.id,
+          ventaId: selectedEntrega.id,
+        });
+
+        // Registrar entrega asociada al cheque
+        await api("api/entregas", "POST", {
+          monto: montoCheque,
+          metodoPagoId: metodoPagos.find((m) => m.nombre === "CHEQUE")?.id,
+          cajaId: Number(sessionStorage.getItem("cajaId")),
+          negocioId: selectedEntrega.negocio?.id,
+          ventaId: selectedEntrega.id,
+          pagoOtroDia: false,
+        });
+
+        message.success("Cheque y entrega registrados correctamente");
+        chequeForm.resetFields();
+
+        // cerrar modales
+        setPaymentModalVisible(false);
+        setDetailsModalVisible(false);
+        setSelectedEntrega(null);
+        setProcessingPayment(false);
+
+        // refrescar totales
+        await refrescarTotalesCaja();
         return;
       }
 
@@ -701,57 +692,6 @@ const Entregas = () => {
         JSON.stringify(paymentData)
       );
       console.log("Respuesta de la API:", response);
-
-      const ventaActualizada = response?.data?.venta;
-
-      setEntregas((prev) =>
-        prev.map((item) => {
-          if (item.id !== selectedEntrega.id) return item;
-
-          // Si el backend mandó la venta actualizada, usamos eso
-          if (ventaActualizada) {
-            const total = Number(ventaActualizada.total ?? item.monto ?? 0);
-            const totalPagado = Number(ventaActualizada.totalPagado || 0);
-            const resto = Number(
-              ventaActualizada.restoPendiente ??
-              Math.max(0, total - totalPagado)
-            );
-
-            return {
-              ...item,
-              monto: total,
-              monto_pagado: totalPagado,
-              resto_pendiente: resto,
-              estado: ventaActualizada.estadoPago ?? item.estado,
-              metodo_pago: payLater ? "PENDIENTE_OTRO_DIA" : paymentMethod,
-            };
-          }
-
-          // Fallback: si por algún motivo no viene ventaActualizada,
-          // usamos la lógica vieja.
-          const montoPagado = payLater
-            ? 0
-            : parseFloat(paymentAmount) + (item.monto_pagado || 0);
-          const restoPendiente = Math.max(0, item.monto - montoPagado);
-
-          let nuevoEstado;
-          if (payLater) {
-            nuevoEstado = 3; // Pago aplazado
-          } else if (isParcial) {
-            nuevoEstado = 5; // Pago parcial
-          } else {
-            nuevoEstado = 2; // Cobrada completamente
-          }
-
-          return {
-            ...item,
-            metodo_pago: payLater ? "PENDIENTE_OTRO_DIA" : paymentMethod,
-            estado: nuevoEstado,
-            monto_pagado: montoPagado,
-            resto_pendiente: restoPendiente,
-          };
-        })
-      );
 
       // Eliminar el ID de la venta de newVentasIds cuando se procesa el pago
       if (newVentasIds.includes(selectedEntrega.id)) {
@@ -856,21 +796,17 @@ const Entregas = () => {
         );
     }
   };
+  const visibles = React.useMemo(() => {
+    const map = new Map();
+    [...entregas, ...ventasEspeciales].forEach((v) => map.set(v.id, v));
+    return Array.from(map.values());
+  }, [entregas, ventasEspeciales]);
 
   // Renderizado condicional basado en estado de carga
   if (loading) {
     return (
       <div className="flex justify-center items-center h-80">
         <Loading />
-      </div>
-    );
-  }
-
-  // Verificar si hay entregas para mostrar
-  if (!entregas || entregas.length === 0) {
-    return (
-      <div className="flex justify-center items-center h-80">
-        <Empty description="No hay entregas para mostrar" />
       </div>
     );
   }
@@ -935,13 +871,23 @@ const Entregas = () => {
           )}
         </div>
         <div className="space-y-4">
-          {[...filteredEntregas]
-            .sort((a, b) => {
-              const fechaA = new Date(a.fechaCreacion);
-              const fechaB = new Date(b.fechaCreacion);
-              return orden === "desc" ? fechaB - fechaA : fechaA - fechaB;
-            })
-            .map((entrega) => (
+          {(() => {
+            const filtradas = [...visibles]
+              .filter(
+                (entrega) =>
+                  estadoFiltro === "todos" || entrega.estado == estadoFiltro
+              )
+              .sort((a, b) => {
+                const fechaA = new Date(a.fechaCreacion);
+                const fechaB = new Date(b.fechaCreacion);
+                return orden === "desc" ? fechaB - fechaA : fechaA - fechaB;
+              });
+
+            if (filtradas.length === 0) {
+              return <Empty description="No hay entregas para mostrar" />;
+            }
+
+            return filtradas.map((entrega) => (
               <Card
                 key={entrega.id}
                 className="shadow-md rounded-lg border-l-4 hover:shadow-lg transition-shadow"
@@ -973,8 +919,8 @@ const Entregas = () => {
                         <span>
                           {entrega.fechaCreacion
                             ? new Date(entrega.fechaCreacion).toLocaleString(
-                              "es-AR"
-                            )
+                                "es-AR"
+                              )
                             : ""}
                         </span>
                       </div>
@@ -1011,14 +957,14 @@ const Entregas = () => {
                       {(entrega.estado === 1 ||
                         entrega.estado === 3 ||
                         entrega.estado === 5) && (
-                          <Button
-                            type="primary"
-                            size="small"
-                            onClick={() => handleOpenPaymentModal(entrega)}
-                          >
-                            {entrega.estado === 5 ? "Completar Pago" : "Cobrar"}
-                          </Button>
-                        )}
+                        <Button
+                          type="primary"
+                          size="small"
+                          onClick={() => handleOpenPaymentModal(entrega)}
+                        >
+                          {entrega.estado === 5 ? "Completar Pago" : "Cobrar"}
+                        </Button>
+                      )}
                       {entrega.estado === 4 &&
                         !entrega.entregadaCuentaCorriente && (
                           <Button
@@ -1042,7 +988,8 @@ const Entregas = () => {
                   </div>
                 </div>
               </Card>
-            ))}
+            ));
+          })()}
         </div>
       </div>
       {/* Modal para mostrar los detalles */}
@@ -1059,22 +1006,22 @@ const Entregas = () => {
             Cerrar
           </Button>,
           selectedEntrega &&
-          (selectedEntrega.estado === 1 ||
-            selectedEntrega.estado === 3 ||
-            selectedEntrega.estado === 5) && (
-            <Button
-              key="cobrar"
-              type="primary"
-              onClick={() => {
-                handleCloseDetailsModal();
-                handleOpenPaymentModal(selectedEntrega);
-              }}
-            >
-              {selectedEntrega.estado === 5
-                ? "Completar Pago"
-                : "Cobrar Entrega"}
-            </Button>
-          ),
+            (selectedEntrega.estado === 1 ||
+              selectedEntrega.estado === 3 ||
+              selectedEntrega.estado === 5) && (
+              <Button
+                key="cobrar"
+                type="primary"
+                onClick={() => {
+                  handleCloseDetailsModal();
+                  handleOpenPaymentModal(selectedEntrega);
+                }}
+              >
+                {selectedEntrega.estado === 5
+                  ? "Completar Pago"
+                  : "Cobrar Entrega"}
+              </Button>
+            ),
         ]}
         width={600}
       >
@@ -1096,8 +1043,8 @@ const Entregas = () => {
                   <strong>Fecha:</strong>{" "}
                   {selectedEntrega.fechaCreacion
                     ? new Date(selectedEntrega.fechaCreacion).toLocaleString(
-                      "es-AR"
-                    )
+                        "es-AR"
+                      )
                     : ""}
                 </p>
               </div>
@@ -1107,10 +1054,10 @@ const Entregas = () => {
                   {selectedEntrega.estado === 5
                     ? "PAGO PARCIAL"
                     : selectedEntrega.estado === 3
-                      ? "PAGO OTRO DÍA"
-                      : selectedEntrega.estado === 2
-                        ? "COBRADA"
-                        : "PENDIENTE"}
+                    ? "PAGO OTRO DÍA"
+                    : selectedEntrega.estado === 2
+                    ? "COBRADA"
+                    : "PENDIENTE"}
                 </p>
                 {selectedEntrega.metodo_pago &&
                   selectedEntrega.estado !== 3 && (
@@ -1297,7 +1244,23 @@ const Entregas = () => {
               <Form.Item label="Método de pago" className="mb-4">
                 <Select
                   value={paymentMethod}
-                  onChange={setPaymentMethod}
+                  onChange={(value) => {
+                    setPaymentMethod(value);
+
+                    const metodo = metodoPagos.find((m) => m.nombre === value);
+                    const esCh = metodo?.nombre?.toUpperCase() === "CHEQUE";
+
+                    if (esCh && selectedEntrega) {
+                      const pendiente =
+                        selectedEntrega.resto_pendiente ??
+                        Math.max(
+                          0,
+                          selectedEntrega.monto -
+                            (selectedEntrega.monto_pagado || 0)
+                        );
+                      setPaymentAmount(String(pendiente));
+                    }
+                  }}
                   disabled={payLater}
                   className="w-full"
                   placeholder="Seleccione un método de pago"
@@ -1321,10 +1284,10 @@ const Entregas = () => {
                   payLater
                     ? "Desactive 'Pagar otro día' para ingresar un monto"
                     : selectedEntrega?.estado === 5
-                      ? `Monto pendiente: ${formatMoney(
+                    ? `Monto pendiente: ${formatMoney(
                         selectedEntrega?.resto_pendiente || 0
                       )}`
-                      : ""
+                    : ""
                 }
               >
                 <Input
@@ -1332,8 +1295,8 @@ const Entregas = () => {
                   placeholder={
                     selectedEntrega?.estado === 5
                       ? `Ingrese el monto a pagar (Pendiente: ${formatMoney(
-                        selectedEntrega?.resto_pendiente || 0
-                      )})`
+                          selectedEntrega?.resto_pendiente || 0
+                        )})`
                       : "Ingrese el monto recibido"
                   }
                   value={paymentAmount}
@@ -1347,6 +1310,45 @@ const Entregas = () => {
             </>
           )}
         </Form>
+        {!payLater && esCheque && (
+          <Form layout="vertical" form={chequeForm} className="mt-2">
+            <Form.Item
+              name="banco"
+              label="Banco"
+              rules={[{ required: true, message: "Ingresá el banco" }]}
+            >
+              <Input placeholder="Ej: Nación" />
+            </Form.Item>
+
+            <Form.Item
+              name="nroCheque"
+              label="Número de cheque"
+              rules={[{ required: true, message: "Ingresá el nro. de cheque" }]}
+            >
+              <Input placeholder="Ej: 012345678" inputMode="numeric" />
+            </Form.Item>
+
+            <Form.Item
+              name="fechaEmision"
+              label="Fecha de emisión"
+              rules={[
+                { required: true, message: "Seleccioná la fecha de emisión" },
+              ]}
+            >
+              <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
+            </Form.Item>
+
+            <Form.Item
+              name="fechaCobro"
+              label="Fecha de cobro"
+              rules={[
+                { required: true, message: "Seleccioná la fecha de cobro" },
+              ]}
+            >
+              <DatePicker format="DD/MM/YYYY" style={{ width: "100%" }} />
+            </Form.Item>
+          </Form>
+        )}
       </Modal>
       <Modal
         title="Cierre de Caja"
@@ -1361,7 +1363,7 @@ const Entregas = () => {
             type="primary"
             loading={cierreLoading}
             onClick={handleCerrarCaja}
-          // Ya no es necesario deshabilitar por montoContado
+            // Ya no es necesario deshabilitar por montoContado
           >
             Confirmar Cierre
           </Button>,
@@ -1430,8 +1432,8 @@ const Entregas = () => {
         footer={null}
       >
         {detalleMetodo &&
-          detalleMetodo.detalles &&
-          detalleMetodo.detalles.length ? (
+        detalleMetodo.detalles &&
+        detalleMetodo.detalles.length ? (
           <ul style={{ paddingLeft: 16 }}>
             {detalleMetodo.detalles.map((valor, idx) => (
               <li key={idx}>${Number(valor).toLocaleString("es-AR")}</li>
