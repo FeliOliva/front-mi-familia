@@ -95,6 +95,10 @@ const prepararTransacciones = (raw) => {
 };
 
 const VentasPorNegocio = () => {
+  // Obtener rol del usuario (1 = encargado de ventas)
+  const userRole = Number(sessionStorage.getItem("rol"));
+  const isEncargadoVentas = userRole === 1;
+
   const [negocios, setNegocios] = useState([]);
   const [negocioSeleccionado, setNegocioSeleccionado] = useState(null);
   const [fechaInicio, setFechaInicio] = useState(null);
@@ -677,22 +681,26 @@ const VentasPorNegocio = () => {
               >
                 Imprimir
               </Button>
-              <Button
-                icon={<CreditCardOutlined />}
-                onClick={() => setIsAddPagoOpen(true)}
-                type="primary"
-                disabled={!negocioSeleccionado}
-              >
-                Agregar Pago
-              </Button>
-              <Button
-                icon={<PlusOutlined />}
-                onClick={() => setIsAddNotaCreditoOpen(true)}
-                type="primary"
-                disabled={!negocioSeleccionado}
-              >
-                Agregar Nota de Crédito
-              </Button>
+              {!isEncargadoVentas && (
+                <>
+                  <Button
+                    icon={<CreditCardOutlined />}
+                    onClick={() => setIsAddPagoOpen(true)}
+                    type="primary"
+                    disabled={!negocioSeleccionado}
+                  >
+                    Agregar Pago
+                  </Button>
+                  <Button
+                    icon={<PlusOutlined />}
+                    onClick={() => setIsAddNotaCreditoOpen(true)}
+                    type="primary"
+                    disabled={!negocioSeleccionado}
+                  >
+                    Agregar Nota de Crédito
+                  </Button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -1045,30 +1053,34 @@ const VentasPorNegocio = () => {
           >
             Imprimir
           </Button>
-          <Button
-            icon={<CreditCardOutlined />}
-            onClick={() => {
-              setIsAddPagoOpen(true);
-              setActionDrawerVisible(false);
-            }}
-            type="primary"
-            style={{ width: "100%" }}
-            disabled={!negocioSeleccionado}
-          >
-            Agregar Pago
-          </Button>
-          <Button
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setIsAddNotaCreditoOpen(true);
-              setActionDrawerVisible(false);
-            }}
-            type="primary"
-            style={{ width: "100%" }}
-            disabled={!negocioSeleccionado}
-          >
-            Agregar Nota de Crédito
-          </Button>
+          {!isEncargadoVentas && (
+            <>
+              <Button
+                icon={<CreditCardOutlined />}
+                onClick={() => {
+                  setIsAddPagoOpen(true);
+                  setActionDrawerVisible(false);
+                }}
+                type="primary"
+                style={{ width: "100%" }}
+                disabled={!negocioSeleccionado}
+              >
+                Agregar Pago
+              </Button>
+              <Button
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  setIsAddNotaCreditoOpen(true);
+                  setActionDrawerVisible(false);
+                }}
+                type="primary"
+                style={{ width: "100%" }}
+                disabled={!negocioSeleccionado}
+              >
+                Agregar Nota de Crédito
+              </Button>
+            </>
+          )}
         </div>
       </Drawer>
 

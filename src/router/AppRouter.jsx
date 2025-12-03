@@ -10,6 +10,7 @@ import Ventas from "../pages/admin/Ventas";
 import Productos from "../pages/admin/Productos";
 import Negocios from "../pages/admin/Negocios";
 import Resumenes from "../pages/admin/Resumenes";
+import Pedidos from "../pages/admin/Pedidos";
 import Repartidor from "../pages/repartidor/Repartidor";
 import Unauthorized from "../pages/Unauthorized";
 import Entregas from "../pages/repartidor/Entregas";
@@ -68,6 +69,7 @@ const AppRouter = () => {
                     <Route path="resumenes" element={<Resumenes />} />
                     <Route path="ventas" element={<Ventas />} />
                     <Route path="caja" element={<Caja />} />
+                    <Route path="pedidos" element={<Pedidos />} />
                   </>
                 )}
 
