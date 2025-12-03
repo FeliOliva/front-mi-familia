@@ -212,7 +212,8 @@ const MainLayout = () => {
           key="logout"
           icon={<LogoutOutlined />}
           onClick={() => {
-            sessionStorage.removeItem("token");
+            // Limpiar todos los datos de sesión
+            sessionStorage.clear();
             window.location.href = "/login";
           }}
         >

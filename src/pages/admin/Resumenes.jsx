@@ -23,7 +23,8 @@ import {
   CreditCardOutlined,
   MenuOutlined,
 } from "@ant-design/icons";
-import logo from "../../assets/logo.png";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -485,18 +486,22 @@ const VentasPorNegocio = () => {
                 onClick={() => handleVerDetalle(record)}
                 size="small"
               />
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => handleEditar(record)}
-                size="small"
-                disabled={record.tipo === "Nota de Crédito"}
-              />
-              <Button
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => handleEliminar(record.id, record.tipo)}
-                size="small"
-              />
+              {!isEncargadoVentas && (
+                <>
+                  <Button
+                    icon={<EditOutlined />}
+                    onClick={() => handleEditar(record)}
+                    size="small"
+                    disabled={record.tipo === "Nota de Crédito"}
+                  />
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => handleEliminar(record.id, record.tipo)}
+                    size="small"
+                  />
+                </>
+              )}
             </div>
           ),
         },
@@ -541,16 +546,20 @@ const VentasPorNegocio = () => {
                 icon={<EyeOutlined />}
                 onClick={() => handleVerDetalle(record)}
               />
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => handleEditar(record)}
-                disabled={record.tipo === "Nota de Crédito"}
-              />
-              <Button
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => handleEliminar(record.id, record.tipo)}
-              />
+              {!isEncargadoVentas && (
+                <>
+                  <Button
+                    icon={<EditOutlined />}
+                    onClick={() => handleEditar(record)}
+                    disabled={record.tipo === "Nota de Crédito"}
+                  />
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => handleEliminar(record.id, record.tipo)}
+                  />
+                </>
+              )}
             </div>
           ),
         },
@@ -559,13 +568,152 @@ const VentasPorNegocio = () => {
   };
 
   const handleImprimirResumen = () => {
-    const printContents = document.getElementById("printableArea").innerHTML;
-    const originalContents = document.body.innerHTML;
+    if (!negocioSeleccionado) {
+      message.warning("Seleccioná un negocio primero");
+      return;
+    }
+    if (transacciones.length === 0) {
+      message.warning("No hay movimientos para imprimir");
+      return;
+    }
 
-    document.body.innerHTML = printContents;
-    window.print();
-    document.body.innerHTML = originalContents;
-    window.location.reload(); // para recargar el contenido original
+    const negocio = negocios.find((n) => n.id === negocioSeleccionado);
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 15;
+
+    // Encabezado
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text("VERDULERÍA MI FAMILIA", pageWidth / 2, y, { align: "center" });
+    y += 8;
+
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "normal");
+    doc.text("Resumen de Cuenta Corriente", pageWidth / 2, y, { align: "center" });
+    y += 10;
+
+    // Info del negocio y período
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Cliente: ${negocio?.nombre || "-"}`, 14, y);
+    y += 5;
+    
+    doc.setFont("helvetica", "normal");
+    if (fechaInicio && fechaFin) {
+      doc.text(
+        `Período: ${dayjs(fechaInicio).format("DD/MM/YYYY")} - ${dayjs(fechaFin).format("DD/MM/YYYY")}`,
+        14,
+        y
+      );
+      y += 5;
+    }
+    doc.text(`Fecha de emisión: ${dayjs().format("DD/MM/YYYY HH:mm")}`, 14, y);
+    y += 8;
+
+    // Ordenar transacciones por fecha ASC para el PDF
+    const transaccionesOrdenadas = [...transacciones].sort(
+      (a, b) => new Date(a.fecha) - new Date(b.fecha)
+    );
+
+    // Calcular totales
+    const totalVentas = transacciones
+      .filter((t) => t.tipo === "Venta")
+      .reduce((acc, t) => acc + Number(t.total_con_descuento ?? t.total ?? t.monto ?? 0), 0);
+    const totalEntregas = transacciones
+      .filter((t) => t.tipo === "Entrega")
+      .reduce((acc, t) => acc + Number(t.monto ?? 0), 0);
+    const totalNC = transacciones
+      .filter((t) => t.tipo === "Nota de Crédito")
+      .reduce((acc, t) => acc + Number(t.monto ?? 0), 0);
+
+    // Tabla de movimientos
+    const tableData = transaccionesOrdenadas.map((item) => {
+      const tipoAbrev = item.tipo === "Nota de Crédito" ? "N.C." : item.tipo;
+      const signo = item.tipo === "Venta" ? "" : "-";
+      return [
+        dayjs(item.fecha).format("DD/MM/YY"),
+        tipoAbrev,
+        item.numero || "-",
+        `${signo}$${item.monto_formateado}`,
+        `$${item.saldo_restante?.toLocaleString("es-AR") || "0"}`,
+      ];
+    });
+
+    autoTable(doc, {
+      head: [["Fecha", "Tipo", "Nro", "Monto", "Saldo"]],
+      body: tableData,
+      startY: y,
+      theme: "striped",
+      margin: { left: 14, right: 14 },
+      styles: {
+        font: "helvetica",
+        fontSize: 9,
+        cellPadding: 2,
+      },
+      headStyles: {
+        fontStyle: "bold",
+        fillColor: [76, 175, 80],
+        textColor: 255,
+        halign: "center",
+      },
+      columnStyles: {
+        0: { cellWidth: 22, halign: "center" },
+        1: { cellWidth: 22, halign: "center" },
+        2: { cellWidth: 25, halign: "center" },
+        3: { cellWidth: 35, halign: "right" },
+        4: { cellWidth: 35, halign: "right" },
+      },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
+    });
+
+    // Resumen final
+    const finalY = doc.lastAutoTable.finalY + 10;
+
+    doc.setFillColor(240, 240, 240);
+    doc.rect(14, finalY - 2, pageWidth - 28, 28, "F");
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("RESUMEN", 18, finalY + 4);
+
+    doc.setFont("helvetica", "normal");
+    doc.text(`Total Ventas:`, 18, finalY + 10);
+    doc.text(`$${totalVentas.toLocaleString("es-AR")}`, pageWidth - 18, finalY + 10, { align: "right" });
+
+    doc.text(`Total Entregas:`, 18, finalY + 16);
+    doc.text(`-$${totalEntregas.toLocaleString("es-AR")}`, pageWidth - 18, finalY + 16, { align: "right" });
+
+    if (totalNC > 0) {
+      doc.text(`Notas de Crédito:`, 18, finalY + 22);
+      doc.text(`-$${totalNC.toLocaleString("es-AR")}`, pageWidth - 18, finalY + 22, { align: "right" });
+    }
+
+    // Saldo pendiente destacado
+    const saldoY = totalNC > 0 ? finalY + 32 : finalY + 28;
+    doc.setFillColor(76, 175, 80);
+    doc.rect(14, saldoY - 2, pageWidth - 28, 10, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("SALDO PENDIENTE:", 18, saldoY + 4);
+    doc.text(`$${saldoPendiente.toLocaleString("es-AR")}`, pageWidth - 18, saldoY + 4, { align: "right" });
+
+    // Resetear color
+    doc.setTextColor(0, 0, 0);
+
+    // Pie de página
+    const pageHeight = doc.internal.pageSize.getHeight();
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text("Verdulería Mi Familia - Documento generado automáticamente", pageWidth / 2, pageHeight - 10, {
+      align: "center",
+    });
+
+    // Guardar PDF
+    const nombreArchivo = `resumen-${negocio?.nombre?.replace(/\s+/g, "-") || "cuenta"}-${dayjs().format("DDMMYYYY")}.pdf`;
+    doc.save(nombreArchivo);
+    message.success("PDF generado correctamente");
   };
 
   const saldoPendiente = React.useMemo(() => {
@@ -1090,7 +1238,7 @@ const VentasPorNegocio = () => {
         placement="bottom"
         onClose={() => setActionDrawerVisible(false)}
         open={actionDrawerVisible}
-        height="50%"
+        height={isEncargadoVentas ? "40%" : "50%"}
       >
         {selectedRecord && (
           <div className="space-y-4">
@@ -1121,83 +1269,34 @@ const VentasPorNegocio = () => {
                 Ver detalle
               </Button>
 
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => handleEditar(selectedRecord)}
-                style={{ width: "100%" }}
-                disabled={selectedRecord?.tipo === "Nota de Crédito"}
-              >
-                Editar
-              </Button>
+              {!isEncargadoVentas && (
+                <>
+                  <Button
+                    icon={<EditOutlined />}
+                    onClick={() => handleEditar(selectedRecord)}
+                    style={{ width: "100%" }}
+                    disabled={selectedRecord?.tipo === "Nota de Crédito"}
+                  >
+                    Editar
+                  </Button>
 
-              <Button
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() =>
-                  handleEliminar(selectedRecord.id, selectedRecord.tipo)
-                }
-                style={{ width: "100%" }}
-              >
-                Eliminar {selectedRecord?.tipo?.toLowerCase()}
-              </Button>
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() =>
+                      handleEliminar(selectedRecord.id, selectedRecord.tipo)
+                    }
+                    style={{ width: "100%" }}
+                  >
+                    Eliminar {selectedRecord?.tipo?.toLowerCase()}
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         )}
       </Drawer>
 
-      <div id="printableArea" className="hidden print:block p-6">
-        <div className="text-center mb-4">
-          <img
-            src={logo}
-            alt="Logo"
-            className="mx-auto mb-2"
-            style={{ width: "100px" }}
-          />
-          <h1 className="text-2xl font-bold">Mi Familia</h1>
-          <h2 className="text-xl mt-2">Resumen de Cuenta</h2>
-          {negocios.find((n) => n.id === negocioSeleccionado)?.nombre && (
-            <p className="mt-2">
-              Negocio:{" "}
-              <strong>
-                {negocios.find((n) => n.id === negocioSeleccionado)?.nombre}
-              </strong>
-            </p>
-          )}
-          {fechaInicio && fechaFin && (
-            <p>
-              Desde: {dayjs(fechaInicio).format("DD/MM/YYYY")} hasta:{" "}
-              {dayjs(fechaFin).format("DD/MM/YYYY")}
-            </p>
-          )}
-        </div>
-
-        <table className="w-full text-sm border border-black border-collapse">
-          <thead>
-            <tr className="bg-gray-200">
-              <th className="border border-black p-2">Tipo</th>
-              <th className="border border-black p-2">Fecha</th>
-              <th className="border border-black p-2">Monto</th>
-              <th className="border border-black p-2">Saldo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transacciones.map((item) => (
-              <tr key={item.uniqueId}>
-                <td className="border border-black p-2">{item.tipo}</td>
-                <td className="border border-black p-2">
-                  {dayjs(item.fecha).format("DD/MM/YYYY")}
-                </td>
-                <td className="border border-black p-2">
-                  ${item.monto_formateado}
-                </td>
-                <td className="border border-black p-2">
-                  ${item.saldo_restante.toLocaleString("es-AR")}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 };

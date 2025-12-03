@@ -20,8 +20,11 @@ const Login = () => {
       if (!response.ok)
         throw new Error(data.message || "Error en la autenticación");
 
+      // Duración del token: 8 horas (debe coincidir con el backend)
+      const TOKEN_DURATION_MS = 8 * 60 * 60 * 1000; // 8 horas en milisegundos
+      
       const now = new Date();
-      const expiryTime = now.getTime() + 60 * 60 * 1000;
+      const expiryTime = now.getTime() + TOKEN_DURATION_MS;
 
       sessionStorage.setItem("token", data.token);
       sessionStorage.setItem("tokenExpiry", expiryTime);
@@ -29,6 +32,8 @@ const Login = () => {
       sessionStorage.setItem("cajaId", data.cajaId);
       sessionStorage.setItem("userName", data.userName);
       sessionStorage.setItem("usuarioId", data.usuarioId);
+      
+      // Limpiar sesión automáticamente cuando expire el token
       setTimeout(() => {
         sessionStorage.removeItem("token");
         sessionStorage.removeItem("tokenExpiry");
@@ -38,7 +43,7 @@ const Login = () => {
         sessionStorage.removeItem("usuarioId");
         message.info("Tu sesión ha expirado. Iniciá sesión nuevamente.");
         navigate("/login");
-      }, 60 * 60 * 1000);
+      }, TOKEN_DURATION_MS);
 
       message.success("Inicio de sesión exitoso");
 

@@ -58,11 +58,11 @@ const getUnidadAbbr = (u) => {
 };
 
 const getStepByUnidad = (u) => {
-  // Manejar si u es un objeto con propiedad tipo o un string
+  // Permitir decimales para todas las unidades (0.5 como step por defecto)
   const unidadStr = typeof u === "object" ? (u?.tipo || "") : (u || "");
   const U = String(unidadStr).toUpperCase();
   if (U === "KG") return 0.1;
-  return 1;
+  return 0.5;
 };
 
 // Hook para detectar móvil
@@ -641,23 +641,15 @@ const Pedidos = () => {
                 )
               }
             />
-            <InputNumber
-              min={getStepByUnidad(item._unidad || item.tipoUnidad || "UNIDAD")}
-              step={getStepByUnidad(item._unidad || item.tipoUnidad || "UNIDAD")}
-              precision={
-                String(
-                  typeof (item._unidad || item.tipoUnidad) === "object"
-                    ? (item._unidad?.tipo || item.tipoUnidad?.tipo || "UNIDAD")
-                    : (item._unidad || item.tipoUnidad || "UNIDAD")
-                ).toUpperCase() === "KG"
-                  ? 2
-                  : 0
-              }
-              value={item.cantidad}
-              onChange={(value) => actualizarCantidad(index, value)}
-              size={isMobile ? "middle" : "large"}
-              style={{ width: "80px", margin: "0 4px" }}
-            />
+<InputNumber
+                              min={0.1}
+                              step={getStepByUnidad(item._unidad || item.tipoUnidad || "UNIDAD")}
+                              precision={2}
+                              value={item.cantidad}
+                              onChange={(value) => actualizarCantidad(index, value)}
+                              size={isMobile ? "middle" : "large"}
+                              style={{ width: "90px", margin: "0 4px" }}
+                            />
             <Button
               size="small"
               icon={<PlusOutlined />}
