@@ -228,6 +228,10 @@ const Ventas = () => {
   const [loadingCajas, setLoadingCajas] = useState(false);
   const [filtroCaja, setFiltroCaja] = useState("todas");
 
+  // Búsqueda de ventas por nroVenta
+  const [busquedaVenta, setBusquedaVenta] = useState("");
+  const [debouncedBusqueda, setDebouncedBusqueda] = useState("");
+
   // Estados para mostrar detalles de venta
   const [detalleModalVisible, setDetalleModalVisible] = useState(false);
   const [detalleVenta, setDetalleVenta] = useState(null);
@@ -318,15 +322,7 @@ const Ventas = () => {
       const response = await api("api/caja");
       setCajas(response);
       console.log("cajas", response);
-
-      // Si hay una caja guardada en sessionStorage, seleccionarla
-      const cajaGuardada = sessionStorage.getItem("cajaId");
-      if (cajaGuardada) {
-        setSelectedCaja(parseInt(cajaGuardada));
-      } else if (response.cajas && response.cajas.length > 0) {
-        // Si no hay caja guardada pero hay cajas disponibles, seleccionar la primera
-        setSelectedCaja(response.cajas[0]?.id);
-      }
+      // No auto-seleccionar ninguna caja - el usuario debe elegirla manualmente
     } catch (error) {
       message.error("Error al cargar cajas: " + error.message);
     } finally {
@@ -334,12 +330,21 @@ const Ventas = () => {
     }
   };
 
-  const fetchVentas = async (page = 1) => {
+  // Debounce para búsqueda de ventas
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedBusqueda(busquedaVenta.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [busquedaVenta]);
+
+  const fetchVentas = async (page = 1, q = "") => {
     try {
       setLoading(true);
-      const { ventas, total } = await api(
-        `api/ventas?page=${page}&limit=${pageSize}`
-      );
+      const params = new URLSearchParams();
+      params.set("page", page);
+      params.set("limit", pageSize);
+      if (q) params.set("q", q);
+
+      const { ventas, total } = await api(`api/ventas?${params.toString()}`);
       console.log("ventas ", ventas);
 
       // Cargar la información de los negocios y cajas para todas las ventas
@@ -383,10 +388,13 @@ const Ventas = () => {
   };
 
   useEffect(() => {
-    fetchVentas(currentPage);
+    fetchVentas(currentPage, debouncedBusqueda);
+  }, [currentPage, debouncedBusqueda]);
+
+  useEffect(() => {
     cargarNegocios();
     cargarCajas();
-  }, [currentPage]);
+  }, []);
 
   const buscarProductos = () => {
     if (!productosCargados) return;
@@ -570,7 +578,7 @@ const Ventas = () => {
       setSelectedNegocio(null);
 
       // Recargar lista
-      fetchVentas(currentPage);
+      fetchVentas(currentPage, debouncedBusqueda);
     } catch (err) {
       message.error("Error al guardar venta: " + err.message);
     } finally {
@@ -903,21 +911,36 @@ const Ventas = () => {
             Registrar Venta
           </Button>
         </div>
-        <div className="px-4 py-4 flex flex-col md:flex-row md:items-center gap-2">
-          <span>Filtrar por caja:</span>
-          <Select
-            value={filtroCaja}
-            onChange={setFiltroCaja}
-            style={{ width: 200 }}
-            allowClear={false}
-          >
-            <Option value="todas">Todas las cajas</Option>
-            {cajas.map((caja) => (
-              <Option key={caja.id} value={caja.id}>
-                {caja.nombre}
-              </Option>
-            ))}
-          </Select>
+        <div className="px-4 py-4 flex flex-col gap-3">
+          <Input
+            placeholder="Buscar por número de venta"
+            value={busquedaVenta}
+            onChange={(e) => {
+              setBusquedaVenta(e.target.value);
+              setCurrentPage(1);
+            }}
+            prefix={<SearchOutlined style={{ color: "#1890ff" }} />}
+            className="w-full md:max-w-xs"
+            allowClear
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-gray-600">Filtrar por caja:</span>
+            <Select
+              value={filtroCaja}
+              onChange={setFiltroCaja}
+              style={{ width: 200 }}
+              allowClear={false}
+            >
+              <Option value="todas">Todas las cajas</Option>
+              {cajas
+                .filter((caja) => Number(caja.id) !== 1) // Ocultar caja de Lucas (id 1)
+                .map((caja) => (
+                  <Option key={caja.id} value={caja.id}>
+                    {caja.nombre}
+                  </Option>
+                ))}
+            </Select>
+          </div>
         </div>
       </div>
 

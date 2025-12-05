@@ -290,7 +290,7 @@ const Productos = () => {
             Agregar Producto
           </Button>
         </div>
-        <div className="px-4 py-4 flex flex-col md:flex-row md:items-center gap-2">
+        <div className="px-4 py-4 flex flex-col gap-3">
           <Input
             placeholder="Buscar por nombre"
             value={busqueda}
@@ -298,36 +298,42 @@ const Productos = () => {
               setBusqueda(e.target.value);
               setCurrentPage(1);
             }}
-            style={{ width: 300, marginRight: 10 }}
+            className="w-full md:max-w-xs"
+            allowClear
           />
 
-          <Button
-            type={filtroEstado === "todos" ? "primary" : "default"}
-            onClick={() => {
-              setFiltroEstado("todos");
-              setCurrentPage(1);
-            }}
-          >
-            Todos
-          </Button>
-          <Button
-            type={filtroEstado === "activos" ? "primary" : "default"}
-            onClick={() => {
-              setFiltroEstado("activos");
-              setCurrentPage(1);
-            }}
-          >
-            Activos
-          </Button>
-          <Button
-            type={filtroEstado === "inactivos" ? "primary" : "default"}
-            onClick={() => {
-              setFiltroEstado("inactivos");
-              setCurrentPage(1);
-            }}
-          >
-            Inactivos
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type={filtroEstado === "todos" ? "primary" : "default"}
+              onClick={() => {
+                setFiltroEstado("todos");
+                setCurrentPage(1);
+              }}
+              className="flex-1 sm:flex-none"
+            >
+              Todos
+            </Button>
+            <Button
+              type={filtroEstado === "activos" ? "primary" : "default"}
+              onClick={() => {
+                setFiltroEstado("activos");
+                setCurrentPage(1);
+              }}
+              className="flex-1 sm:flex-none"
+            >
+              Activos
+            </Button>
+            <Button
+              type={filtroEstado === "inactivos" ? "primary" : "default"}
+              onClick={() => {
+                setFiltroEstado("inactivos");
+                setCurrentPage(1);
+              }}
+              className="flex-1 sm:flex-none"
+            >
+              Inactivos
+            </Button>
+          </div>
         </div>
       </div>
 

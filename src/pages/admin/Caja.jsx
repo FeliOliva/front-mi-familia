@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { api } from "../../services/api";
 import { PrinterOutlined } from "@ant-design/icons";
 import { Tooltip, Modal, Button, Input } from "antd";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const CierreCajaGeneral = () => {
   const [cajas, setCajas] = useState([]);
@@ -215,82 +217,227 @@ const CierreCajaGeneral = () => {
       : "";
 
   const handleImprimirCierre = async (cierre) => {
-    let metodosPago = cierre.metodosPago;
-    // Si no viene el detalle, lo traemos por API
-    if (!metodosPago || metodosPago.length === 0) {
-      try {
-        metodosPago = await api(
-          `api/cierre-caja/${cierre.id}/detalle-metodos`,
-          "GET"
-        );
-      } catch (e) {
-        metodosPago = [];
-      }
+    // Obtener los detalles completos de ventas del endpoint
+    let detallesVentas = [];
+    try {
+      detallesVentas = await api(
+        `api/cierre-caja/${cierre.id}/detalle-ventas`,
+        "GET"
+      );
+    } catch (e) {
+      console.error("Error obteniendo detalles de ventas:", e);
+      detallesVentas = [];
     }
 
-    const printWindow = window.open("", "_blank");
-    printWindow.document.write(`
-    <html>
-      <head>
-        <title>Cierre de Caja</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 24px; }
-          h2 { margin-bottom: 8px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-          th, td { border: 1px solid #333; padding: 8px; text-align: left; }
-        </style>
-      </head>
-      <body>
-        <h2>Cierre de Caja</h2>
-        <p><strong>Fecha:</strong> ${new Date(cierre.fecha).toLocaleString(
-          "es-AR"
-        )}</p>
-        <p><strong>Caja:</strong> ${cierre.caja?.nombre || "-"}</p>
-        <p><strong>Usuario:</strong> ${cierre.usuario?.usuario || "-"}</p>
-        <p><strong>Total Ventas:</strong> $${cierre.totalVentas?.toLocaleString(
-          "es-AR"
-        )}</p>
-        <p><strong>Total Pagado:</strong> $${cierre.totalPagado?.toLocaleString(
-          "es-AR"
-        )}</p>
-        <p><strong>Total en Efectivo:</strong> $${cierre.totalEfectivo?.toLocaleString(
-          "es-AR"
-        )}</p>
-        <p><strong>Total Cuenta Corriente:</strong> $${cierre.totalCuentaCorriente?.toLocaleString(
-          "es-AR"
-        )}</p>
-        <p><strong>Efectivo Contado:</strong> $${cierre.ingresoLimpio?.toLocaleString(
-          "es-AR"
-        )}</p>
-        <p><strong>Estado:</strong> ${
-          cierre.estado === 0 ? "Abierta" : "Cerrada"
-        }</p>
-        <h3>Detalle de Métodos de Pago</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Método</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${(metodosPago || [])
-              .map(
-                (m) => `
-              <tr >
-                <td>${capitalize(m.metodoPago || m.nombre)}</td>
-                <td>$${(m.total || 0).toLocaleString("es-AR")}</td>
-              </tr>
-            `
-              )
-              .join("")}
-          </tbody>
-        </table>
-      </body>
-    </html>
-  `);
-    printWindow.document.close();
-    printWindow.print();
+    // Agrupar por método de pago
+    const grupos = agruparPorMetodoYVenta(detallesVentas);
+
+    // Calcular diferencia
+    const diferencia = (cierre.ingresoLimpio || 0) - (cierre.totalEfectivo || 0);
+
+    // Calcular total general
+    const totalGeneral = grupos.reduce((acc, g) => acc + g.total, 0);
+
+    // Formatear fecha
+    const fechaFormateada = new Date(cierre.fecha).toLocaleString("es-AR");
+    const fechaCorta = new Date(cierre.fecha).toLocaleDateString("es-AR");
+
+    // Crear PDF
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 15;
+
+    // Encabezado
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text("VERDULERÍA MI FAMILIA", pageWidth / 2, y, { align: "center" });
+    y += 8;
+
+    doc.setFontSize(14);
+    doc.text("CIERRE DE CAJA", pageWidth / 2, y, { align: "center" });
+    y += 10;
+
+    // Línea decorativa
+    doc.setDrawColor(59, 130, 246);
+    doc.setLineWidth(1);
+    doc.line(14, y, pageWidth - 14, y);
+    y += 8;
+
+    // Info del cierre
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Caja: ${cierre.caja?.nombre || "-"}`, 14, y);
+    doc.text(`Estado: ${cierre.estado === 0 ? "Abierta" : "Cerrada"}`, pageWidth - 14, y, { align: "right" });
+    y += 5;
+
+    doc.setFont("helvetica", "normal");
+    doc.text(`Usuario: ${cierre.usuario?.usuario || "-"}`, 14, y);
+    doc.text(`Fecha: ${fechaFormateada}`, pageWidth - 14, y, { align: "right" });
+    y += 10;
+
+    // Tabla de resumen financiero
+    const resumenData = [
+      ["Total Ventas", `$${(cierre.totalVentas || 0).toLocaleString("es-AR")}`],
+      ["Total Cobrado", `$${(cierre.totalPagado || 0).toLocaleString("es-AR")}`],
+      ["Total Cuenta Corriente", `$${(cierre.totalCuentaCorriente || 0).toLocaleString("es-AR")}`],
+      ["Total Efectivo (Sistema)", `$${(cierre.totalEfectivo || 0).toLocaleString("es-AR")}`],
+      ["Efectivo Contado", `$${(cierre.ingresoLimpio || 0).toLocaleString("es-AR")}`],
+      ["Diferencia", `${diferencia >= 0 ? "+" : ""}$${diferencia.toLocaleString("es-AR")}`],
+    ];
+
+    autoTable(doc, {
+      head: [["Concepto", "Monto"]],
+      body: resumenData,
+      startY: y,
+      theme: "striped",
+      margin: { left: 14, right: 14 },
+      styles: {
+        font: "helvetica",
+        fontSize: 10,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fontStyle: "bold",
+        fillColor: [59, 130, 246],
+        textColor: 255,
+        halign: "center",
+      },
+      columnStyles: {
+        0: { cellWidth: 100 },
+        1: { cellWidth: 60, halign: "right" },
+      },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      didParseCell: (data) => {
+        // Colorear la diferencia según sea positiva o negativa
+        if (data.row.index === 5 && data.column.index === 1) {
+          data.cell.styles.textColor = diferencia >= 0 ? [22, 163, 74] : [220, 38, 38];
+          data.cell.styles.fontStyle = "bold";
+        }
+      },
+    });
+
+    y = doc.lastAutoTable.finalY + 12;
+
+    // Detalle por método de pago
+    if (grupos.length > 0) {
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("DETALLE DE VENTAS POR MÉTODO DE PAGO", 14, y);
+      y += 8;
+
+      grupos.forEach((g) => {
+        // Verificar si necesitamos nueva página
+        if (y > 250) {
+          doc.addPage();
+          y = 15;
+        }
+
+        // Título del método
+        doc.setFillColor(243, 244, 246);
+        doc.rect(14, y - 4, pageWidth - 28, 7, "F");
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(55, 65, 81);
+        doc.text(capitalize(g.metodo), 18, y);
+        doc.setTextColor(0, 0, 0);
+        y += 6;
+
+        // Tabla de ventas por método
+        const ventasData = g.ventas.map((v) => [
+          v.negocioNombre || "SIN NEGOCIO",
+          v.nroVenta ? `#${v.nroVenta}` : v.ventaId ? `ID ${v.ventaId}` : "-",
+          `$${v.monto.toLocaleString("es-AR")}`,
+        ]);
+
+        // Agregar fila de subtotal
+        ventasData.push([
+          { content: `Subtotal ${capitalize(g.metodo)}`, colSpan: 2, styles: { fontStyle: "bold" } },
+          { content: `$${g.total.toLocaleString("es-AR")}`, styles: { fontStyle: "bold" } },
+        ]);
+
+        autoTable(doc, {
+          head: [["Negocio", "Nro. Venta", "Monto"]],
+          body: ventasData,
+          startY: y,
+          theme: "grid",
+          margin: { left: 14, right: 14 },
+          styles: {
+            font: "helvetica",
+            fontSize: 9,
+            cellPadding: 2,
+          },
+          headStyles: {
+            fontStyle: "bold",
+            fillColor: [229, 231, 235],
+            textColor: [55, 65, 81],
+          },
+          columnStyles: {
+            0: { cellWidth: 70 },
+            1: { cellWidth: 50, halign: "center" },
+            2: { cellWidth: 40, halign: "right" },
+          },
+        });
+
+        y = doc.lastAutoTable.finalY + 8;
+      });
+
+      // Resumen final de totales
+      if (y > 240) {
+        doc.addPage();
+        y = 15;
+      }
+
+      doc.setFillColor(30, 64, 175);
+      doc.rect(14, y, pageWidth - 28, 10 + grupos.length * 6 + 10, "F");
+
+      y += 6;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(255, 255, 255);
+      doc.text("RESUMEN DE TOTALES POR MÉTODO", 18, y);
+      y += 6;
+
+      doc.setFont("helvetica", "normal");
+      grupos.forEach((g) => {
+        doc.text(capitalize(g.metodo), 18, y);
+        doc.text(`$${g.total.toLocaleString("es-AR")}`, pageWidth - 18, y, { align: "right" });
+        y += 5;
+      });
+
+      // Línea separadora
+      doc.setDrawColor(255, 255, 255);
+      doc.setLineWidth(0.3);
+      doc.line(18, y, pageWidth - 18, y);
+      y += 5;
+
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("TOTAL GENERAL", 18, y);
+      doc.text(`$${totalGeneral.toLocaleString("es-AR")}`, pageWidth - 18, y, { align: "right" });
+
+      doc.setTextColor(0, 0, 0);
+    }
+
+    // Footer
+    const pageHeight = doc.internal.pageSize.getHeight();
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(156, 163, 175);
+    doc.text(
+      `Documento generado el ${new Date().toLocaleString("es-AR")} | Sistema de Gestión Mi Familia`,
+      pageWidth / 2,
+      pageHeight - 10,
+      { align: "center" }
+    );
+
+    // Guardar PDF
+    const nombreArchivo = `cierre-caja-${cierre.caja?.nombre?.replace(/\s+/g, "-") || "caja"}-${fechaCorta.replace(/\//g, "-")}.pdf`;
+    doc.save(nombreArchivo);
   };
   // Agrupa los métodos de pago por nombre y suma los totales
   const agruparMetodos = (items = []) => {
@@ -391,9 +538,8 @@ const CierreCajaGeneral = () => {
           {cajas
             .filter((caja) => caja.id != 1)
             .map((caja) => {
-              const contado = montosContados[caja.id] || 0;
-              const sistema = getTotalSistema(caja.id);
-              const diferencia = contado - sistema;
+              const totales =
+                totalesEntregas.find((t) => t.cajaId === caja.id) || {};
 
               return (
                 <div
@@ -401,54 +547,36 @@ const CierreCajaGeneral = () => {
                   className="p-4 border-b border-gray-200 last:border-b-0"
                 >
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium text-gray-900">
-                        {caja.nombre}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        Sistema: {formatCurrency(sistema)}
-                      </span>
+                    <div className="font-medium text-gray-900 text-lg border-b pb-2">
+                      {caja.nombre}
                     </div>
 
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="flex items-center space-x-2">
-                        <label className="text-sm text-gray-600 min-w-0">
-                          Contado:
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={montosContados[caja.id] || ""}
-                          onChange={(e) =>
-                            handleInputChange(
-                              caja.id,
-                              parseFloat(e.target.value) || 0
-                            )
-                          }
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="0"
-                        />
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-gray-500">Total Entregado</span>
+                        <div className="font-medium text-gray-900">
+                          {formatCurrency(totales.totalEntregado || 0)}
+                        </div>
                       </div>
-
-                      <div className="text-sm">
-                        <span className="text-gray-600">Diferencia: </span>
-                        <span
-                          className={`font-medium ${
-                            diferencia >= 0 ? "text-green-600" : "text-red-600"
-                          }`}
-                        >
-                          {formatCurrency(diferencia)}
-                        </span>
+                      <div>
+                        <span className="text-gray-500">Total Efectivo</span>
+                        <div className="font-medium text-gray-900">
+                          {formatCurrency(totales.totalEfectivo || 0)}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Total Otros</span>
+                        <div className="font-medium text-gray-900">
+                          {formatCurrency(totales.totalOtros || 0)}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Total Cuenta Corriente</span>
+                        <div className="font-medium text-gray-900">
+                          {formatCurrency(totales.totalCuentaCorriente || 0)}
+                        </div>
                       </div>
                     </div>
-
-                    <button
-                      onClick={() => handleCerrarCaja(caja)}
-                      disabled={loading}
-                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                    >
-                      {loading ? "Cerrando..." : "Cerrar Caja"}
-                    </button>
                   </div>
                 </div>
               );
@@ -527,17 +655,8 @@ const CierreCajaGeneral = () => {
                   <td className="px-2 py-4 whitespace-nowrap">
                     <button
                       onClick={() => handleImprimirCierre(cierre)}
-                      disabled={cierre.estado !== 2}
-                      className={`bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded-md text-sm ${
-                        cierre.estado !== 2
-                          ? "opacity-50 cursor-not-allowed"
-                          : ""
-                      }`}
-                      title={
-                        cierre.estado !== 2
-                          ? "Solo se puede imprimir si la caja está cerrada"
-                          : "Imprimir cierre"
-                      }
+                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded-md text-sm"
+                      title="Imprimir cierre"
                     >
                       <PrinterOutlined />
                     </button>
@@ -608,205 +727,241 @@ const CierreCajaGeneral = () => {
 
         {/* Vista Mobile */}
         <div className="lg:hidden">
-          {cierres.map((cierre) => (
-            <div
-              key={cierre.id}
-              className="p-4 border-b border-gray-200 last:border-b-0"
-            >
-              <div className="space-y-2">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-medium text-gray-900">
-                      {cierre.caja?.nombre}
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      {formatDate(cierre.fecha)}
-                    </div>
-                  </div>
-                  <span
-                    className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${
-                      cierre.estado === 0
-                        ? "bg-yellow-100 text-yellow-800"
-                        : "bg-green-100 text-green-800"
-                    }`}
-                  >
-                    {cierre.estado === 0 ? "Abierta" : "Cerrada"}
-                  </span>
-                </div>
+          {cierres.map((cierre) => {
+            const diferencia =
+              (cierre.ingresoLimpio || 0) - (cierre.totalEfectivo || 0);
 
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-gray-600">Usuario:</span>
-                    <div className="font-medium">{cierre.usuario?.usuario}</div>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Sistema:</span>
-                    <div className="font-medium">
-                      {formatCurrency(cierre.totalVentas)}
+            return (
+              <div
+                key={cierre.id}
+                className="p-4 border-b border-gray-200 last:border-b-0"
+              >
+                <div className="space-y-3">
+                  {/* Header con caja, fecha y estado */}
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-medium text-gray-900 text-lg">
+                        {cierre.caja?.nombre}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {formatDate(cierre.fecha)}
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Efectivo:</span>
-                    <div className="font-medium">
-                      {formatCurrency(cierre.totalEfectivo)}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Contado:</span>
-                    <div className="font-medium">
-                      {formatCurrency(cierre.totalPagado)}
-                    </div>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-gray-600">Diferencia:</span>
-                    <div
-                      className={`font-medium ${
-                        cierre.ingresoLimpio >= 0
-                          ? "text-green-600"
-                          : "text-red-600"
+                    <span
+                      className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${
+                        cierre.estado === 0
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-green-100 text-green-800"
                       }`}
                     >
-                      {formatCurrency(cierre.ingresoLimpio)}
+                      {cierre.estado === 0 ? "Abierta" : "Cerrada"}
+                    </span>
+                  </div>
+
+                  {/* Usuario */}
+                  <div className="text-sm">
+                    <span className="text-gray-500">Usuario:</span>
+                    <span className="font-medium ml-1">
+                      {cierre.usuario?.usuario}
+                    </span>
+                  </div>
+
+                  {/* Grid con todos los datos financieros */}
+                  <div className="grid grid-cols-2 gap-3 text-sm bg-gray-50 p-3 rounded-lg">
+                    <div>
+                      <span className="text-gray-500 block">Total Ventas</span>
+                      <div className="font-medium text-gray-900">
+                        {formatCurrency(cierre.totalVentas)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Total Cobrado</span>
+                      <div className="font-medium text-gray-900">
+                        {formatCurrency(cierre.totalPagado)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">
+                        Total Cuenta Corriente
+                      </span>
+                      <div className="font-medium text-gray-900">
+                        {formatCurrency(cierre.totalCuentaCorriente)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Total Efectivo</span>
+                      <div className="font-medium text-gray-900">
+                        {formatCurrency(cierre.totalEfectivo)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Contado</span>
+                      <div className="font-medium text-gray-900">
+                        {formatCurrency(cierre.ingresoLimpio)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Diferencia</span>
+                      <div
+                        className={`font-medium ${
+                          diferencia >= 0 ? "text-green-600" : "text-red-600"
+                        }`}
+                      >
+                        {formatCurrency(diferencia)}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => verDetalleMetodos(cierre)}
-                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-md text-sm"
-                  >
-                    Ver detalles
-                  </button>
+                  {/* Botones de acción */}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleImprimirCierre(cierre)}
+                        className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-md text-sm flex items-center justify-center gap-2"
+                        title="Imprimir cierre"
+                      >
+                        <PrinterOutlined /> Imprimir
+                      </button>
+                      <button
+                        onClick={() => verDetalleMetodos(cierre)}
+                        className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-md text-sm"
+                      >
+                        Ver detalles
+                      </button>
+                    </div>
 
-                  <button
-                    onClick={() => abrirModalEditar(cierre)}
-                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md text-sm"
-                  >
-                    Editar Contado
-                  </button>
+                    <button
+                      onClick={() => abrirModalEditar(cierre)}
+                      className="w-full bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+                    >
+                      Editar Contado
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-          <Modal
-            open={modalEditarVisible}
-            onCancel={cerrarModalEditar}
-            title={
-              cierreEditando
-                ? `Editar contado - ${cierreEditando.caja?.nombre || "Caja"}`
-                : "Editar contado"
-            }
-            footer={[
-              <Button key="cancel" onClick={cerrarModalEditar}>
-                Cancelar
-              </Button>,
-              <Button key="save" type="primary" onClick={guardarMontoEditado}>
-                Guardar
-              </Button>,
-            ]}
-          >
-            <p className="mb-2 text-sm text-gray-600">
-              Ingresá el monto contado físicamente para esta caja.
-            </p>
-            <Input
-              value={montoEditando}
-              onChange={(e) => setMontoEditando(e.target.value)}
-              prefix="$"
-              type="number"
-              min="0"
-            />
-          </Modal>
-          <Modal
-            open={detalleModalVisible}
-            onCancel={() => setDetalleModalVisible(false)}
-            footer={[
-              <Button key="close" onClick={() => setDetalleModalVisible(false)}>
-                Cerrar
-              </Button>,
-            ]}
-            title={
-              cierreSeleccionado
-                ? `Métodos de pago - ${
-                    cierreSeleccionado.caja?.nombre || "Caja"
-                  } (${formatDate(cierreSeleccionado.fecha)})`
-                : "Métodos de pago"
-            }
-          >
-            {detalleMetodos.length === 0 ? (
-              <p className="text-sm text-gray-500">
-                No hay métodos de pago registrados para este cierre.
-              </p>
-            ) : (
-              (() => {
-                const grupos = agruparPorMetodoYVenta(detalleMetodos);
-
-                return (
-                  <div className="space-y-6">
-                    {grupos.map((g) => (
-                      <div key={g.metodo}>
-                        {/* Método centrado arriba */}
-                        <div className="text-center font-semibold mb-2">
-                          {g.metodo}
-                        </div>
-
-                        {/* Tabla solo con Negocio / Venta / Monto */}
-                        <table className="min-w-full border border-gray-200 text-sm">
-                          <thead className="bg-gray-100">
-                            <tr>
-                              <th className="px-4 py-2 text-left font-medium text-gray-600">
-                                Negocio
-                              </th>
-                              <th className="px-4 py-2 text-left font-medium text-gray-600">
-                                Venta
-                              </th>
-                              <th className="px-4 py-2 text-right font-medium text-gray-600">
-                                Monto
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {g.ventas.map((v, idx) => (
-                              <tr key={g.metodo + "-" + (v.ventaId || idx)}>
-                                <td className="px-4 py-2 border-t border-gray-200">
-                                  {v.negocioNombre || "SIN NEGOCIO"}
-                                </td>
-                                <td className="px-4 py-2 border-t border-gray-200">
-                                  {v.nroVenta
-                                    ? `Venta #${v.nroVenta}`
-                                    : v.ventaId
-                                    ? `Venta ID ${v.ventaId}`
-                                    : "Venta"}
-                                </td>
-                                <td className="px-4 py-2 border-t border-gray-200 text-right">
-                                  ${v.monto.toLocaleString("es-AR")}
-                                </td>
-                              </tr>
-                            ))}
-
-                            {/* Fila de total al final */}
-                            <tr className="bg-gray-50">
-                              <td
-                                className="px-4 py-2 border-t border-gray-300 font-semibold"
-                                colSpan={2}
-                              >
-                                Total
-                              </td>
-                              <td className="px-4 py-2 border-t border-gray-300 text-right font-semibold">
-                                ${g.total.toLocaleString("es-AR")}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()
-            )}
-          </Modal>
+            );
+          })}
         </div>
       </div>
+
+      {/* Modales (fuera de las vistas condicionales para que funcionen en ambas) */}
+      <Modal
+        open={modalEditarVisible}
+        onCancel={cerrarModalEditar}
+        title={
+          cierreEditando
+            ? `Editar contado - ${cierreEditando.caja?.nombre || "Caja"}`
+            : "Editar contado"
+        }
+        footer={[
+          <Button key="cancel" onClick={cerrarModalEditar}>
+            Cancelar
+          </Button>,
+          <Button key="save" type="primary" onClick={guardarMontoEditado}>
+            Guardar
+          </Button>,
+        ]}
+      >
+        <p className="mb-2 text-sm text-gray-600">
+          Ingresá el monto contado físicamente para esta caja.
+        </p>
+        <Input
+          value={montoEditando}
+          onChange={(e) => setMontoEditando(e.target.value)}
+          prefix="$"
+          type="number"
+          min="0"
+        />
+      </Modal>
+
+      <Modal
+        open={detalleModalVisible}
+        onCancel={() => setDetalleModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setDetalleModalVisible(false)}>
+            Cerrar
+          </Button>,
+        ]}
+        title={
+          cierreSeleccionado
+            ? `Métodos de pago - ${
+                cierreSeleccionado.caja?.nombre || "Caja"
+              } (${formatDate(cierreSeleccionado.fecha)})`
+            : "Métodos de pago"
+        }
+      >
+        {detalleMetodos.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            No hay métodos de pago registrados para este cierre.
+          </p>
+        ) : (
+          (() => {
+            const grupos = agruparPorMetodoYVenta(detalleMetodos);
+
+            return (
+              <div className="space-y-6">
+                {grupos.map((g) => (
+                  <div key={g.metodo}>
+                    {/* Método centrado arriba */}
+                    <div className="text-center font-semibold mb-2">
+                      {g.metodo}
+                    </div>
+
+                    {/* Tabla solo con Negocio / Venta / Monto */}
+                    <table className="min-w-full border border-gray-200 text-sm">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium text-gray-600">
+                            Negocio
+                          </th>
+                          <th className="px-4 py-2 text-left font-medium text-gray-600">
+                            Venta
+                          </th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-600">
+                            Monto
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.ventas.map((v, idx) => (
+                          <tr key={g.metodo + "-" + (v.ventaId || idx)}>
+                            <td className="px-4 py-2 border-t border-gray-200">
+                              {v.negocioNombre || "SIN NEGOCIO"}
+                            </td>
+                            <td className="px-4 py-2 border-t border-gray-200">
+                              {v.nroVenta
+                                ? `Venta #${v.nroVenta}`
+                                : v.ventaId
+                                ? `Venta ID ${v.ventaId}`
+                                : "Venta"}
+                            </td>
+                            <td className="px-4 py-2 border-t border-gray-200 text-right">
+                              ${v.monto.toLocaleString("es-AR")}
+                            </td>
+                          </tr>
+                        ))}
+
+                        {/* Fila de total al final */}
+                        <tr className="bg-gray-50">
+                          <td
+                            className="px-4 py-2 border-t border-gray-300 font-semibold"
+                            colSpan={2}
+                          >
+                            Total
+                          </td>
+                          <td className="px-4 py-2 border-t border-gray-300 text-right font-semibold">
+                            ${g.total.toLocaleString("es-AR")}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            );
+          })()
+        )}
+      </Modal>
     </div>
   );
 };

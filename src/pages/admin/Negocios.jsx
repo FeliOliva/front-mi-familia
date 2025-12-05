@@ -232,31 +232,37 @@ const Negocios = () => {
             Agregar Negocio
           </Button>
         </div>
-        <div className="px-4 py-4 flex flex-col md:flex-row md:items-center gap-2">
+        <div className="px-4 py-4 flex flex-col gap-3">
           <Input
             placeholder="Buscar por nombre o dirección"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            style={{ width: 250 }}
+            className="w-full md:max-w-xs"
+            allowClear
           />
-          <Button
-            type={filtroEstado === "todos" ? "primary" : "default"}
-            onClick={() => setFiltroEstado("todos")}
-          >
-            Todos
-          </Button>
-          <Button
-            type={filtroEstado === "activos" ? "primary" : "default"}
-            onClick={() => setFiltroEstado("activos")}
-          >
-            Activos
-          </Button>
-          <Button
-            type={filtroEstado === "inactivos" ? "primary" : "default"}
-            onClick={() => setFiltroEstado("inactivos")}
-          >
-            Inactivos
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type={filtroEstado === "todos" ? "primary" : "default"}
+              onClick={() => setFiltroEstado("todos")}
+              className="flex-1 sm:flex-none"
+            >
+              Todos
+            </Button>
+            <Button
+              type={filtroEstado === "activos" ? "primary" : "default"}
+              onClick={() => setFiltroEstado("activos")}
+              className="flex-1 sm:flex-none"
+            >
+              Activos
+            </Button>
+            <Button
+              type={filtroEstado === "inactivos" ? "primary" : "default"}
+              onClick={() => setFiltroEstado("inactivos")}
+              className="flex-1 sm:flex-none"
+            >
+              Inactivos
+            </Button>
+          </div>
         </div>
       </div>
 
