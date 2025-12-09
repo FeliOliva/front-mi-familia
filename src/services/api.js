@@ -4,7 +4,7 @@ import { message } from "antd";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
 export const api = async (endpoint, method = "GET", body = null) => {
-  const token = sessionStorage.getItem("token");
+  const token = localStorage.getItem("token");
 
   const config = {
     url: `${API_URL}/${endpoint}`,
@@ -45,9 +45,12 @@ export const api = async (endpoint, method = "GET", body = null) => {
         }
 
         // Limpiamos todo lo relacionado a sesión
-        sessionStorage.clear();
-        // Si también guardás algo en localStorage, lo podés limpiar acá
-        // localStorage.removeItem("token"); // si alguna vez usaste localStorage
+        localStorage.removeItem("token");
+        localStorage.removeItem("tokenExpiry");
+        localStorage.removeItem("rol");
+        localStorage.removeItem("cajaId");
+        localStorage.removeItem("userName");
+        localStorage.removeItem("usuarioId");
 
         // Redirigir a login (ajusta el path si tu ruta es otra)
         window.location.href = "/login";

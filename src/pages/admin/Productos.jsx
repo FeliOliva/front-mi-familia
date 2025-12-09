@@ -130,7 +130,7 @@ const Productos = () => {
 
   const onFinish = async (values) => {
     // rol (si lo necesitás para auditoría)
-    const token = sessionStorage.getItem("token");
+    const token = localStorage.getItem("token");
     let rol_usuario = 0;
     try {
       const payload = JSON.parse(atob(token.split(".")[1]));

@@ -142,7 +142,7 @@ const CierreCajaGeneral = () => {
         "POST",
         JSON.stringify({
           cajaId: caja.id,
-          usuarioId: parseInt(sessionStorage.getItem("usuarioId")),
+          usuarioId: parseInt(localStorage.getItem("usuarioId")),
           // Total de entregas (lo que trajo el repartidor)
           totalVentas: totalSistema,
           // Total cobrado por sistema (todas las entregas, cualquier método)

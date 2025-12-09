@@ -196,7 +196,7 @@ const Pedidos = () => {
   const [detallePedido, setDetallePedido] = useState(null);
 
   // Verificar si el usuario es admin (usuarioId = 1)
-  const usuarioId = parseInt(sessionStorage.getItem("usuarioId"));
+  const usuarioId = parseInt(localStorage.getItem("usuarioId"));
   const isAdminUser = usuarioId === 1;
 
   // Si no es admin, mostrar mensaje

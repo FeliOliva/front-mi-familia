@@ -97,7 +97,7 @@ const prepararTransacciones = (raw) => {
 
 const VentasPorNegocio = () => {
   // Obtener rol del usuario (1 = encargado de ventas)
-  const userRole = Number(sessionStorage.getItem("rol"));
+  const userRole = Number(localStorage.getItem("rol"));
   const isEncargadoVentas = userRole === 1;
 
   const [negocios, setNegocios] = useState([]);
@@ -266,7 +266,7 @@ const VentasPorNegocio = () => {
 
     setLoadingPago(true);
     try {
-      const cajaId = parseInt(sessionStorage.getItem("cajaId"), 10);
+      const cajaId = parseInt(localStorage.getItem("cajaId"), 10);
       await api("api/entregas", "POST", {
         monto: montoNum, // <--- enviado con centavos si el backend lo soporta
         metodoPagoId: Number(nuevoMetodoPago),
@@ -993,7 +993,7 @@ const VentasPorNegocio = () => {
               const values = await chequeForm.validateFields();
 
               const cajaId = parseInt(
-                sessionStorage.getItem("cajaId") || "0",
+                localStorage.getItem("cajaId") || "0",
                 10
               );
               if (!cajaId) {

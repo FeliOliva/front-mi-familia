@@ -545,8 +545,8 @@ const Ventas = () => {
         productoId: parseInt(producto.id),
       }));
 
-      const usuarioId = parseInt(sessionStorage.getItem("usuarioId"));
-      const rolUsuario = parseInt(sessionStorage.getItem("rol") || "0");
+      const usuarioId = parseInt(localStorage.getItem("usuarioId"));
+      const rolUsuario = parseInt(localStorage.getItem("rol") || "0");
 
       // Payload base, común a crear y editar
       const payloadBase = {

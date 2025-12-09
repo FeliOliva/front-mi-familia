@@ -71,7 +71,7 @@ const Negocios = () => {
 
   const onFinish = async (values) => {
     try {
-      const rol_usuario = parseInt(sessionStorage.getItem("rol") || "0", 10);
+      const rol_usuario = parseInt(localStorage.getItem("rol") || "0", 10);
 
       if (isEditing && editingNegocio) {
         // EDITAR (PUT) — exactamente como pediste

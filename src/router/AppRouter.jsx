@@ -20,13 +20,23 @@ import Caja from "../pages/admin/Caja";
 // import CierreCajaEncargado from "../pages/encargadoVenta/cierreCaja";
 
 const AppRouter = () => {
-  const token = sessionStorage.getItem("token");
-  const expiry = sessionStorage.getItem("tokenExpiry");
-  const userRole = Number(sessionStorage.getItem("rol"));
+  const token = localStorage.getItem("token");
+  const expiry = localStorage.getItem("tokenExpiry");
+  const userRole = Number(localStorage.getItem("rol"));
   const now = Date.now();
   const [isMobile, setIsMobile] = useState(false);
 
   const isAuthenticated = token && expiry && now < Number(expiry);
+  
+  // Limpiar localStorage si el token expiró
+  if (token && expiry && now >= Number(expiry)) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("tokenExpiry");
+    localStorage.removeItem("rol");
+    localStorage.removeItem("cajaId");
+    localStorage.removeItem("userName");
+    localStorage.removeItem("usuarioId");
+  }
 
   // Definir permisos por rol
   const isAdmin = userRole === 0;

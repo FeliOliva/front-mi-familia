@@ -26,21 +26,22 @@ const Login = () => {
       const now = new Date();
       const expiryTime = now.getTime() + TOKEN_DURATION_MS;
 
-      sessionStorage.setItem("token", data.token);
-      sessionStorage.setItem("tokenExpiry", expiryTime);
-      sessionStorage.setItem("rol", data.rol);
-      sessionStorage.setItem("cajaId", data.cajaId);
-      sessionStorage.setItem("userName", data.userName);
-      sessionStorage.setItem("usuarioId", data.usuarioId);
+      // Usar localStorage en lugar de sessionStorage para persistir en móviles
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("tokenExpiry", expiryTime.toString());
+      localStorage.setItem("rol", data.rol);
+      localStorage.setItem("cajaId", data.cajaId);
+      localStorage.setItem("userName", data.userName);
+      localStorage.setItem("usuarioId", data.usuarioId);
       
       // Limpiar sesión automáticamente cuando expire el token
       setTimeout(() => {
-        sessionStorage.removeItem("token");
-        sessionStorage.removeItem("tokenExpiry");
-        sessionStorage.removeItem("rol");
-        sessionStorage.removeItem("cajaId");
-        sessionStorage.removeItem("userName");
-        sessionStorage.removeItem("usuarioId");
+        localStorage.removeItem("token");
+        localStorage.removeItem("tokenExpiry");
+        localStorage.removeItem("rol");
+        localStorage.removeItem("cajaId");
+        localStorage.removeItem("userName");
+        localStorage.removeItem("usuarioId");
         message.info("Tu sesión ha expirado. Iniciá sesión nuevamente.");
         navigate("/login");
       }, TOKEN_DURATION_MS);

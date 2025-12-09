@@ -14,7 +14,7 @@ const Repartidor = () => {
   useEffect(() => {
     const getUserInfo = () => {
       try {
-        const storedUserName = sessionStorage.getItem("userName");
+        const storedUserName = localStorage.getItem("userName");
         setUserName(storedUserName || "Repartidor");
       } catch (error) {
         console.error("Error obteniendo nombre del usuario:", error);
@@ -44,7 +44,12 @@ const Repartidor = () => {
 
   // Función para cerrar sesión
   const handleLogout = () => {
-    sessionStorage.clear();
+    localStorage.removeItem("token");
+    localStorage.removeItem("tokenExpiry");
+    localStorage.removeItem("rol");
+    localStorage.removeItem("cajaId");
+    localStorage.removeItem("userName");
+    localStorage.removeItem("usuarioId");
     navigate("/login");
     window.location.href = "/login";
   };

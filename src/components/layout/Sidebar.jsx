@@ -67,7 +67,7 @@ const MainLayout = () => {
   };
 
   const MainMenuItems = () => {
-    const userRole = Number(sessionStorage.getItem("rol"));
+    const userRole = Number(localStorage.getItem("rol"));
     const isAdmin = userRole === 0;
     const isEncargadoVentas = userRole === 1;
     const isDelivery = userRole >= 2 && userRole !== 3;
@@ -213,7 +213,12 @@ const MainLayout = () => {
           icon={<LogoutOutlined />}
           onClick={() => {
             // Limpiar todos los datos de sesión
-            sessionStorage.clear();
+            localStorage.removeItem("token");
+            localStorage.removeItem("tokenExpiry");
+            localStorage.removeItem("rol");
+            localStorage.removeItem("cajaId");
+            localStorage.removeItem("userName");
+            localStorage.removeItem("usuarioId");
             window.location.href = "/login";
           }}
         >

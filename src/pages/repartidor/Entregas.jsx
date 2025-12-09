@@ -143,7 +143,7 @@ const Entregas = () => {
   };
 
   const refrescarTotalesCaja = async () => {
-    const cajaId = sessionStorage.getItem("cajaId");
+    const cajaId = localStorage.getItem("cajaId");
     if (!cajaId) return;
 
     try {
@@ -154,7 +154,7 @@ const Entregas = () => {
     }
   };
   const hayDatosParaCerrar = () => {
-    const cajaId = Number(sessionStorage.getItem("cajaId"));
+    const cajaId = Number(localStorage.getItem("cajaId"));
     const resumen = totalesEntregas.find((t) => Number(t.cajaId) === cajaId);
 
     if (!resumen) return false;
@@ -185,9 +185,9 @@ const Entregas = () => {
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
-    const cajaId = sessionStorage.getItem("cajaId");
+    const cajaId = localStorage.getItem("cajaId");
     if (!cajaId) {
-      console.error("No hay cajaId en sessionStorage");
+      console.error("No hay cajaId en localStorage");
       return;
     }
 
@@ -333,7 +333,7 @@ const Entregas = () => {
 
   const handleAbrirCierreCaja = async () => {
     setCierreLoading(true);
-    const cajaId = sessionStorage.getItem("cajaId");
+    const cajaId = localStorage.getItem("cajaId");
     try {
       const [caja, totales] = await Promise.all([
         api(`api/caja/${cajaId}`, "GET"),
@@ -359,7 +359,7 @@ const Entregas = () => {
     setCierreLoading(true);
 
     try {
-      const usuarioId = Number(sessionStorage.getItem("usuarioId"));
+      const usuarioId = Number(localStorage.getItem("usuarioId"));
       const cajaId = Number(cajaInfo.id);
 
       // 3) Resumen de ENTREGAS reales del día para esta caja (ya respeta el último cierre)
@@ -437,7 +437,7 @@ const Entregas = () => {
 
   useEffect(() => {
     const verificarCierrePendiente = async () => {
-      const cajaId = Number(sessionStorage.getItem("cajaId"));
+      const cajaId = Number(localStorage.getItem("cajaId"));
       if (!cajaId) return;
 
       try {
@@ -514,7 +514,7 @@ const Entregas = () => {
     // 2) Llamada a la API (si querés seguir registrando el evento,
     //    pero sin cambiar el estado real de la venta)
     await api(
-      `api/entregas/cambiarEstado?venta_id=${ventaId}&estado=4&caja_id=${sessionStorage.getItem(
+      `api/entregas/cambiarEstado?venta_id=${ventaId}&estado=4&caja_id=${localStorage.getItem(
         "cajaId"
       )}`,
       "POST"
@@ -636,7 +636,7 @@ const Entregas = () => {
         await api("api/entregas", "POST", {
           monto: montoCheque,
           metodoPagoId: metodoPagos.find((m) => m.nombre === "CHEQUE")?.id,
-          cajaId: Number(sessionStorage.getItem("cajaId")),
+          cajaId: Number(localStorage.getItem("cajaId")),
           negocioId: selectedEntrega.negocio?.id,
           ventaId: selectedEntrega.id,
           pagoOtroDia: false,
@@ -656,7 +656,7 @@ const Entregas = () => {
         return;
       }
 
-      const cajaId = sessionStorage.getItem("cajaId");
+      const cajaId = localStorage.getItem("cajaId");
       if (!cajaId) {
         setPaymentError("No se encontró el ID de la caja activa");
         setProcessingPayment(false);

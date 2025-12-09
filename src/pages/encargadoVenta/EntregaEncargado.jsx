@@ -82,8 +82,8 @@ const EntregasEncargado = () => {
 
   const initialized = useRef(false);
 
-  const userId = Number(sessionStorage.getItem("usuarioId"));
-  const rol = Number(sessionStorage.getItem("rol"));
+  const userId = Number(localStorage.getItem("usuarioId"));
+  const rol = Number(localStorage.getItem("rol"));
 
   // ====== Cuenta Corriente (mismo flujo que repartidor) ======
   const [confirmEntregaVisible, setConfirmEntregaVisible] = useState(false);
@@ -101,7 +101,7 @@ const EntregasEncargado = () => {
     setConfirmEntregaVisible(true);
   };
   const hayDatosParaCerrar = () => {
-    const cajaId = Number(sessionStorage.getItem("cajaId"));
+    const cajaId = Number(localStorage.getItem("cajaId"));
     const resumen = totalesEntregas.find((t) => Number(t.cajaId) === cajaId);
 
     if (!resumen) return false;
@@ -112,7 +112,7 @@ const EntregasEncargado = () => {
     return totalEntregado > 0 || totalCC > 0;
   };
   const refrescarTotalesCaja = async () => {
-    const cajaId = sessionStorage.getItem("cajaId");
+    const cajaId = localStorage.getItem("cajaId");
     if (!cajaId) return;
 
     try {
@@ -153,7 +153,7 @@ const EntregasEncargado = () => {
 
     // 3) Registrar en backend (manteniendo estado 4)
     await api(
-      `api/entregas/cambiarEstado?venta_id=${ventaId}&estado=${estadoObjetivo}&caja_id=${sessionStorage.getItem(
+      `api/entregas/cambiarEstado?venta_id=${ventaId}&estado=${estadoObjetivo}&caja_id=${localStorage.getItem(
         "cajaId"
       )}`,
       "POST"
@@ -210,7 +210,7 @@ const EntregasEncargado = () => {
   // ====== Cierre de Caja (igual lógica que repartidor) ======
   const handleAbrirCierreCaja = async () => {
     setCierreLoading(true);
-    const cajaId = sessionStorage.getItem("cajaId");
+    const cajaId = localStorage.getItem("cajaId");
 
     try {
       const [caja, totales] = await Promise.all([
@@ -238,7 +238,7 @@ const EntregasEncargado = () => {
     setCierreLoading(true);
 
     try {
-      const usuarioId = Number(sessionStorage.getItem("usuarioId"));
+      const usuarioId = Number(localStorage.getItem("usuarioId"));
       const cajaId = Number(cajaInfo.id);
 
       // 3) Resumen de entregas reales del día para esa caja
@@ -414,8 +414,8 @@ const EntregasEncargado = () => {
   //   const cargarVentasIniciales = async () => {
   //     setLoading(true);
   //     try {
-  //       const cajaIdActual = Number(sessionStorage.getItem("cajaId"));
-  //       const userId = Number(sessionStorage.getItem("usuarioId"));
+  //       const cajaIdActual = Number(localStorage.getItem("cajaId"));
+  //       const userId = Number(localStorage.getItem("usuarioId"));
   //       if (!Number.isFinite(cajaIdActual)) {
   //         notification.error({ message: "Caja no seleccionada" });
   //         setLoading(false);
@@ -510,9 +510,9 @@ const EntregasEncargado = () => {
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
-    const cajaId = sessionStorage.getItem("cajaId");
+    const cajaId = localStorage.getItem("cajaId");
     if (!cajaId) {
-      console.error("No hay cajaId en sessionStorage");
+      console.error("No hay cajaId en localStorage");
       return;
     }
 
@@ -661,7 +661,7 @@ const EntregasEncargado = () => {
 
   useEffect(() => {
     const verificarCierrePendiente = async () => {
-      const cajaId = Number(sessionStorage.getItem("cajaId"));
+      const cajaId = Number(localStorage.getItem("cajaId"));
       if (!cajaId) return;
 
       try {
@@ -797,7 +797,7 @@ const EntregasEncargado = () => {
       }
 
       const cajaId = Number(
-        selectedEntrega.cajaId ?? sessionStorage.getItem("cajaId") ?? 0
+        selectedEntrega.cajaId ?? localStorage.getItem("cajaId") ?? 0
       );
       const negocioId = Number(
         selectedEntrega.negocioId ?? selectedEntrega.negocio?.id ?? 0

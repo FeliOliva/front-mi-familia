@@ -12,8 +12,8 @@ const CierreCajaEncargado = () => {
   const [loadingHistorial, setLoadingHistorial] = useState(false);
   const [metodosPago, setMetodosPago] = useState([]);
 
-  const cajaId = Number(sessionStorage.getItem("cajaId"));
-  const usuarioId = Number(sessionStorage.getItem("usuarioId"));
+  const cajaId = Number(localStorage.getItem("cajaId"));
+  const usuarioId = Number(localStorage.getItem("usuarioId"));
   const fetchData = async () => {
     setLoading(true);
     try {
