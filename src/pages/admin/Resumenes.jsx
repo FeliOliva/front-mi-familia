@@ -22,6 +22,7 @@ import {
   PrinterOutlined,
   CreditCardOutlined,
   MenuOutlined,
+  DollarOutlined,
 } from "@ant-design/icons";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -67,16 +68,25 @@ const parseFromInputNumber = (v) => parseMontoFlexible(v);
 const prepararTransacciones = (raw) => {
   const base = (raw || []).map((item) => {
     const fecha = item.fecha || item.fechaCreacion || new Date().toISOString();
-    const montoBase = Number(
+    // Usar valor absoluto por si el backend envía con signo
+    const montoBase = Math.abs(Number(
       item.total_con_descuento ?? item.total ?? item.monto ?? 0
-    );
-    const signo = item.tipo === "Venta" ? +1 : -1; // Entrega/NC restan
+    ));
+    // Saldo Inicial y Ventas SUMAN (deuda), Entregas y NC RESTAN (pagos)
+    const esSumaDeuda = item.tipo === "Venta" || item.tipo === "Saldo Inicial" || item.esSaldoInicial;
+    const signo = esSumaDeuda ? +1 : -1;
+    
+    // Asegurar que los IDs se preserven correctamente
+    const idFinal = item.id || item.ventaId || item.entregaId || item.notaCreditoId;
+    
     return {
       ...item,
+      id: idFinal, // Asegurar que siempre haya un id
+      ventaId: item.tipo === "Venta" ? (item.ventaId || item.id) : item.ventaId, // Preservar ventaId para ventas
       fecha,
-      __montoOriginal: montoBase, // para mostrar
+      __montoOriginal: montoBase, // para mostrar (siempre positivo)
       __montoFirmado: signo * montoBase, // para acumular saldo
-      uniqueId: `${item.tipo}-${item.id}`,
+      uniqueId: `${item.tipo}-${idFinal}`,
     };
   });
 
@@ -92,7 +102,15 @@ const prepararTransacciones = (raw) => {
     };
   });
 
-  return conSaldo.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+  // Separar Saldo Inicial del resto
+  const saldoInicial = conSaldo.filter((it) => it.tipo === "Saldo Inicial" || it.esSaldoInicial);
+  const otrasTransacciones = conSaldo.filter((it) => it.tipo !== "Saldo Inicial" && !it.esSaldoInicial);
+  
+  // Ordenar el resto por fecha ascendente (más antiguo primero, de abajo hacia arriba)
+  otrasTransacciones.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+  
+  // Saldo Inicial al final, después del resto ordenado por fecha ascendente
+  return [...otrasTransacciones, ...saldoInicial];
 };
 
 const VentasPorNegocio = () => {
@@ -102,9 +120,10 @@ const VentasPorNegocio = () => {
 
   const [negocios, setNegocios] = useState([]);
   const [negocioSeleccionado, setNegocioSeleccionado] = useState(null);
-  const [fechaInicio, setFechaInicio] = useState(null);
-  const [fechaFin, setFechaFin] = useState(null);
+  const [fechaInicio, setFechaInicio] = useState(dayjs("2025-12-01"));
+  const [fechaFin, setFechaFin] = useState(dayjs());
   const [transacciones, setTransacciones] = useState([]);
+  const [hasBuscado, setHasBuscado] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [detalleSeleccionado, setDetalleSeleccionado] = useState(null);
   const [modalContent, setModalContent] = useState(null);
@@ -134,6 +153,13 @@ const VentasPorNegocio = () => {
     metodosPago
       .find((m) => String(m.id) === String(nuevoMetodoPago))
       ?.nombre?.toUpperCase() === "CHEQUE";
+
+  // Estados para Saldo Inicial
+  const [saldoInicial, setSaldoInicial] = useState(null);
+  const [isAddSaldoInicialOpen, setIsAddSaldoInicialOpen] = useState(false);
+  const [montoSaldoInicial, setMontoSaldoInicial] = useState(null);
+  const [descripcionSaldoInicial, setDescripcionSaldoInicial] = useState("");
+  const [loadingSaldoInicial, setLoadingSaldoInicial] = useState(false);
 
   // Detectar el ancho de la pantalla
   useEffect(() => {
@@ -175,21 +201,121 @@ const VentasPorNegocio = () => {
     fetchMetodosPago();
   }, []);
 
+  // Obtener saldo inicial cuando cambia el negocio seleccionado
+  const fetchSaldoInicial = async (negocioId) => {
+    if (!negocioId) {
+      setSaldoInicial(null);
+      return;
+    }
+    try {
+      const res = await api(`api/saldos-iniciales/${negocioId}`);
+      setSaldoInicial(res); // puede ser null si no existe
+    } catch (err) {
+      console.error("Error al obtener saldo inicial:", err);
+      setSaldoInicial(null);
+    }
+  };
+
+  useEffect(() => {
+    if (negocioSeleccionado) {
+      fetchSaldoInicial(negocioSeleccionado);
+    } else {
+      setSaldoInicial(null);
+    }
+  }, [negocioSeleccionado]);
+
+  // Guardar o actualizar saldo inicial
+  const handleGuardarSaldoInicial = async () => {
+    if (!negocioSeleccionado) {
+      message.warning("Seleccioná un negocio primero");
+      return;
+    }
+    if (!montoSaldoInicial && montoSaldoInicial !== 0) {
+      message.warning("Ingresá un monto para el saldo inicial");
+      return;
+    }
+
+    setLoadingSaldoInicial(true);
+    try {
+      if (saldoInicial) {
+        // Actualizar existente
+        const res = await api(`api/saldos-iniciales/${saldoInicial.id}`, "PUT", {
+          monto: montoSaldoInicial,
+          descripcion: descripcionSaldoInicial || null,
+        });
+        setSaldoInicial(res);
+        message.success("Saldo inicial actualizado correctamente");
+      } else {
+        // Crear nuevo
+        const res = await api("api/saldos-iniciales", "POST", {
+          negocioId: negocioSeleccionado,
+          monto: montoSaldoInicial,
+          descripcion: descripcionSaldoInicial || null,
+        });
+        setSaldoInicial(res);
+        message.success("Saldo inicial registrado correctamente");
+      }
+      setIsAddSaldoInicialOpen(false);
+      setMontoSaldoInicial(null);
+      setDescripcionSaldoInicial("");
+      // Refrescar transacciones si ya se buscó
+      if (hasBuscado) {
+        obtenerResumen();
+      }
+    } catch (err) {
+      const msg = err?.message || "Error al guardar el saldo inicial";
+      message.error(msg);
+    } finally {
+      setLoadingSaldoInicial(false);
+    }
+  };
+
+  // Abrir modal de saldo inicial (para crear o editar)
+  const openSaldoInicialModal = () => {
+    if (saldoInicial) {
+      setMontoSaldoInicial(saldoInicial.monto);
+      setDescripcionSaldoInicial(saldoInicial.descripcion || "");
+    } else {
+      setMontoSaldoInicial(null);
+      setDescripcionSaldoInicial("");
+    }
+    setIsAddSaldoInicialOpen(true);
+  };
+
   const handleEditar = async (record) => {
     try {
       let res;
+      const idFinal = record.ventaId || record.id;
+      
       if (record.tipo === "Venta") {
-        res = await api(`api/ventas/${record.id}`);
+        if (!idFinal) {
+          message.error("No se pudo identificar la venta para editar");
+          return;
+        }
+        res = await api(`api/ventas/${idFinal}`);
         setEditingRecord(res);
         setEditMonto(res.total);
       } else if (record.tipo === "Entrega") {
+        if (!record.id) {
+          message.error("No se pudo identificar la entrega para editar");
+          return;
+        }
         res = await api(`api/entregas/${record.id}`);
         setEditingRecord(res);
         setEditMonto(res.monto);
       } else if (record.tipo === "Nota de Crédito") {
+        if (!record.id) {
+          message.error("No se pudo identificar la nota de crédito para editar");
+          return;
+        }
         res = await api(`api/notasCredito/${record.id}`);
         setEditingRecord(res);
         setEditMonto(res.monto);
+      } else if (record.tipo === "Saldo Inicial" || record.esSaldoInicial) {
+        // Para saldo inicial, abrir el modal específico
+        openSaldoInicialModal();
+        setActionDrawerVisible(false);
+        return;
       } else {
         message.error("Tipo de registro no soportado para edición");
         return;
@@ -197,7 +323,8 @@ const VentasPorNegocio = () => {
       setIsEditModalOpen(true);
       setActionDrawerVisible(false);
     } catch (err) {
-      message.error("Error al obtener el registro para editar");
+      console.error("Error al obtener el registro para editar:", err);
+      message.error(`Error al obtener el registro para editar: ${err.message || "Error desconocido"}`);
     }
   };
   const guardarEdicion = async () => {
@@ -223,23 +350,52 @@ const VentasPorNegocio = () => {
     }
   };
 
-  const handleEliminar = async (id, tipo) => {
+  const handleEliminar = async (id, tipo, record = null) => {
+    // Para saldo inicial, usar el id del saldoInicial del estado
+    const esSaldoIni = tipo === "Saldo Inicial" || record?.esSaldoInicial;
+    
+    // Para ventas, usar ventaId si existe
+    const idFinal = tipo === "Venta" ? (record?.ventaId || id) : id;
+    
     Modal.confirm({
-      title: "¿Estás seguro que querés eliminar esta " + tipo + "?",
+      title: esSaldoIni 
+        ? "¿Estás seguro que querés eliminar el Saldo Inicial?" 
+        : "¿Estás seguro que querés eliminar esta " + tipo + "?",
+      content: esSaldoIni 
+        ? "Esto eliminará permanentemente el saldo inicial del cliente." 
+        : undefined,
       okText: "Sí, eliminar",
       okType: "danger",
       cancelText: "Cancelar",
       onOk: async () => {
         try {
           if (tipo === "Venta") {
-            await api(`api/ventas/${id}`, "DELETE");
+            if (!idFinal) {
+              message.error("No se pudo identificar la venta para eliminar");
+              return;
+            }
+            await api(`api/ventas/${idFinal}`, "DELETE");
             message.success("Venta eliminada correctamente");
           } else if (tipo === "Entrega") {
+            if (!id) {
+              message.error("No se pudo identificar la entrega para eliminar");
+              return;
+            }
             await api(`api/entregas/${id}`, "DELETE");
             message.success("Entrega eliminada correctamente");
           } else if (tipo === "Nota de Crédito") {
+            if (!id) {
+              message.error("No se pudo identificar la nota de crédito para eliminar");
+              return;
+            }
             await api(`api/notasCredito/${id}`, "DELETE");
             message.success("Nota de crédito eliminada correctamente");
+          } else if (esSaldoIni) {
+            // Usar el id del saldo inicial del estado
+            const saldoId = saldoInicial?.id || id;
+            await api(`api/saldos-iniciales/${saldoId}`, "DELETE");
+            setSaldoInicial(null);
+            message.success("Saldo inicial eliminado correctamente");
           } else {
             message.error("Tipo de registro no soportado para eliminación");
             return;
@@ -261,17 +417,15 @@ const VentasPorNegocio = () => {
 
     const montoNum = parseMontoFlexible(nuevoMonto);
     if (montoNum <= 0) return message.error("Ingresá un monto válido");
-    if (montoNum > saldoPendiente)
-      return message.error("El monto supera el saldo pendiente");
 
     setLoadingPago(true);
     try {
-      const cajaId = parseInt(localStorage.getItem("cajaId"), 10);
+      const cajaId = parseInt(localStorage.getItem("cajaId") || "0", 10);
       await api("api/entregas", "POST", {
-        monto: montoNum, // <--- enviado con centavos si el backend lo soporta
+        monto: montoNum,
         metodoPagoId: Number(nuevoMetodoPago),
         negocioId: Number(negocioSeleccionado),
-        cajaId,
+        cajaId: cajaId || undefined,
       });
       message.success("Pago registrado correctamente");
       setIsAddPagoOpen(false);
@@ -279,7 +433,7 @@ const VentasPorNegocio = () => {
       setNuevoMetodoPago(null);
       obtenerResumen();
     } catch (err) {
-      const msg = err?.response?.data?.message || "Error al registrar el pago";
+      const msg = err?.response?.data?.message || err?.message || "Error al registrar el pago";
       message.error(msg);
     } finally {
       setLoadingPago(false);
@@ -313,9 +467,16 @@ const VentasPorNegocio = () => {
   };
 
   const handleVerDetalle = async (record) => {
-    const { tipo, id } = record;
+    const { tipo, id, ventaId } = record;
+    // Usar ventaId si existe, sino id
+    const ventaIdFinal = ventaId || id;
+    
     try {
       if (tipo === "Nota de Crédito") {
+        if (!id) {
+          message.error("No se pudo identificar la nota de crédito");
+          return;
+        }
         const res = await api(`api/notasCredito/${id}`);
         const nota = res;
         setModalTitle("Detalle de Nota de Crédito");
@@ -334,32 +495,62 @@ const VentasPorNegocio = () => {
           </div>
         );
       } else if (tipo === "Venta") {
-        const res = await api(`api/ventas/${id}`);
+        if (!ventaIdFinal) {
+          message.error("No se pudo identificar la venta. ID faltante.");
+          console.error("Record sin ID:", record);
+          return;
+        }
+        const res = await api(`api/ventas/${ventaIdFinal}`);
         const venta = res;
+
+        if (!venta || !venta.detalles || venta.detalles.length === 0) {
+          message.warning("La venta no tiene detalles disponibles");
+          return;
+        }
 
         setDetalleSeleccionado(venta.detalles);
         setModalTitle("Detalle de Venta");
         setModalContent(
           <div className="text-sm">
             <p>
-              <strong>Total:</strong> ${venta.total.toLocaleString("es-AR")}
+              <strong>Total:</strong> ${(venta.total || 0).toLocaleString("es-AR")}
             </p>
             <p>
               <strong>Fecha:</strong>{" "}
-              {dayjs(venta.fechaCreacion).format("DD/MM/YYYY")}
+              {dayjs(venta.fechaCreacion || venta.fecha).format("DD/MM/YYYY")}
             </p>
             <p>
               <strong>Productos:</strong>
             </p>
             <ul className="list-disc pl-5">
               {venta.detalles.map((d) => (
-                <li key={d.id} className="mb-1">
-                  {d.producto.nombre} - {d.cantidad} u. x $
+                <li key={d.id || d.productoId} className="mb-1">
+                  {d.producto?.nombre || d.nombreProducto || "Producto sin nombre"} - {d.cantidad} u. x $
                   {d.precio.toLocaleString("es-AR")} = $
-                  {d.subTotal.toLocaleString("es-AR")}
+                  {(d.subTotal || d.precio * d.cantidad).toLocaleString("es-AR")}
                 </li>
               ))}
             </ul>
+          </div>
+        );
+      } else if (tipo === "Saldo Inicial" || record.esSaldoInicial) {
+        setModalTitle("Detalle de Saldo Inicial");
+        setModalContent(
+          <div className="text-sm">
+            <p>
+              <strong>Monto:</strong> ${(record.monto || 0).toLocaleString("es-AR")}
+            </p>
+            <p>
+              <strong>Fecha:</strong> {dayjs(record.fecha).format("DD/MM/YYYY")}
+            </p>
+            {record.descripcion && (
+              <p>
+                <strong>Descripción:</strong> {record.descripcion}
+              </p>
+            )}
+            <p className="mt-2 text-gray-500 text-xs">
+              Este es el saldo que tenía el cliente antes de usar el sistema.
+            </p>
           </div>
         );
       } else {
@@ -367,13 +558,13 @@ const VentasPorNegocio = () => {
         setModalContent(
           <div className="text-sm">
             <p>
-              <strong>Monto:</strong> ${record.monto.toLocaleString("es-AR")}
+              <strong>Monto:</strong> ${(record.monto || 0).toLocaleString("es-AR")}
             </p>
             <p>
               <strong>Fecha:</strong> {dayjs(record.fecha).format("DD/MM/YYYY")}
             </p>
             <p>
-              <strong>Método de pago:</strong> {record.metodo_pago}
+              <strong>Método de pago:</strong> {record.metodo_pago || "-"}
             </p>
           </div>
         );
@@ -381,7 +572,8 @@ const VentasPorNegocio = () => {
       setModalVisible(true);
       setActionDrawerVisible(false);
     } catch (err) {
-      message.error("No se pudieron obtener los detalles");
+      console.error("Error al obtener detalles:", err);
+      message.error(`No se pudieron obtener los detalles: ${err.message || "Error desconocido"}`);
     }
   };
 
@@ -397,6 +589,7 @@ const VentasPorNegocio = () => {
         `api/resumenCuenta/negocio/${negocioSeleccionado}?startDate=${startDate}&endDate=${endDate}`
       );
       setTransacciones(prepararTransacciones(res));
+      setHasBuscado(true);
       setFilterDrawerVisible(false);
     } catch {
       message.error("Error al cargar las transacciones");
@@ -474,8 +667,14 @@ const VentasPorNegocio = () => {
         {
           title: "Saldo",
           dataIndex: "saldo_restante",
-          render: (saldo) =>
-            saldo ? `$${saldo.toLocaleString("es-AR")}` : "-",
+          render: (saldo) => {
+            if (saldo === null || saldo === undefined) return "-";
+            const color = saldo > 0 ? "#cf1322" : saldo < 0 ? "#389e0d" : "#666";
+            const texto = saldo >= 0 
+              ? `$${saldo.toLocaleString("es-AR")}` 
+              : `-$${Math.abs(saldo).toLocaleString("es-AR")}`;
+            return <span style={{ color, fontWeight: 500 }}>{texto}</span>;
+          },
         },
         {
           title: "Acciones",
@@ -486,22 +685,18 @@ const VentasPorNegocio = () => {
                 onClick={() => handleVerDetalle(record)}
                 size="small"
               />
-              {!isEncargadoVentas && (
-                <>
-                  <Button
-                    icon={<EditOutlined />}
-                    onClick={() => handleEditar(record)}
-                    size="small"
-                    disabled={record.tipo === "Nota de Crédito"}
-                  />
-                  <Button
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() => handleEliminar(record.id, record.tipo)}
-                    size="small"
-                  />
-                </>
-              )}
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => handleEditar(record)}
+                size="small"
+                disabled={record.tipo === "Nota de Crédito"}
+              />
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => handleEliminar(record.id, record.tipo, record)}
+                size="small"
+              />
             </div>
           ),
         },
@@ -535,8 +730,14 @@ const VentasPorNegocio = () => {
         {
           title: "Saldo restante",
           dataIndex: "saldo_restante",
-          render: (saldo) =>
-            saldo ? `$${saldo.toLocaleString("es-AR")}` : "-",
+          render: (saldo) => {
+            if (saldo === null || saldo === undefined) return "-";
+            const color = saldo > 0 ? "#cf1322" : saldo < 0 ? "#389e0d" : "#666";
+            const texto = saldo >= 0 
+              ? `$${saldo.toLocaleString("es-AR")}` 
+              : `-$${Math.abs(saldo).toLocaleString("es-AR")}`;
+            return <span style={{ color, fontWeight: 500 }}>{texto}</span>;
+          },
         },
         {
           title: "Acciones",
@@ -546,20 +747,16 @@ const VentasPorNegocio = () => {
                 icon={<EyeOutlined />}
                 onClick={() => handleVerDetalle(record)}
               />
-              {!isEncargadoVentas && (
-                <>
-                  <Button
-                    icon={<EditOutlined />}
-                    onClick={() => handleEditar(record)}
-                    disabled={record.tipo === "Nota de Crédito"}
-                  />
-                  <Button
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() => handleEliminar(record.id, record.tipo)}
-                  />
-                </>
-              )}
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => handleEditar(record)}
+                disabled={record.tipo === "Nota de Crédito"}
+              />
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => handleEliminar(record.id, record.tipo, record)}
+              />
             </div>
           ),
         },
@@ -611,10 +808,11 @@ const VentasPorNegocio = () => {
     doc.text(`Fecha de emisión: ${dayjs().format("DD/MM/YYYY HH:mm")}`, 14, y);
     y += 8;
 
-    // Ordenar transacciones por fecha ASC para el PDF
-    const transaccionesOrdenadas = [...transacciones].sort(
-      (a, b) => new Date(a.fecha) - new Date(b.fecha)
-    );
+    // Ordenar transacciones: resto por fecha ASC, luego Saldo Inicial al final
+    const saldoInicialPDF = transacciones.filter((t) => t.tipo === "Saldo Inicial" || t.esSaldoInicial);
+    const otrasTransaccionesPDF = transacciones.filter((t) => t.tipo !== "Saldo Inicial" && !t.esSaldoInicial);
+    otrasTransaccionesPDF.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    const transaccionesOrdenadas = [...otrasTransaccionesPDF, ...saldoInicialPDF];
 
     // Calcular totales
     const totalVentas = transacciones
@@ -716,8 +914,12 @@ const VentasPorNegocio = () => {
     message.success("PDF generado correctamente");
   };
 
+  // Cálculo del saldo: (saldoInicial + ventas) - (pagos + notasCredito)
+  // Positivo = cliente DEBE | Negativo = cliente tiene SALDO A FAVOR
   const saldoPendiente = React.useMemo(() => {
-    if (!Array.isArray(transacciones)) return 0;
+    const montoSaldoIni = saldoInicial?.monto || 0;
+
+    if (!Array.isArray(transacciones)) return montoSaldoIni;
 
     const totalVentas = transacciones
       .filter((t) => t.tipo === "Venta")
@@ -735,8 +937,10 @@ const VentasPorNegocio = () => {
         0
       );
 
-    return Math.max(totalVentas - totalCreditos, 0);
-  }, [transacciones]);
+    // Fórmula: (saldoInicial + ventas) - (pagos + notasCredito)
+    // Puede ser negativo si el cliente pagó de más (saldo a favor)
+    return montoSaldoIni + totalVentas - totalCreditos;
+  }, [transacciones, saldoInicial]);
 
   // Renderizado principal
   return (
@@ -755,7 +959,11 @@ const VentasPorNegocio = () => {
               <Select
                 style={{ width: "100%", maxWidth: 350 }}
                 placeholder="Selecciona un negocio"
-                onChange={setNegocioSeleccionado}
+                onChange={(value) => {
+                  setNegocioSeleccionado(value);
+                  setHasBuscado(false);
+                  setTransacciones([]);
+                }}
                 value={negocioSeleccionado}
                 className="mb-2"
               >
@@ -801,7 +1009,11 @@ const VentasPorNegocio = () => {
               <Select
                 style={{ width: "100%", maxWidth: 350 }}
                 placeholder="Selecciona un negocio"
-                onChange={setNegocioSeleccionado}
+                onChange={(value) => {
+                  setNegocioSeleccionado(value);
+                  setHasBuscado(false);
+                  setTransacciones([]);
+                }}
                 value={negocioSeleccionado}
                 className="mb-2"
               >
@@ -822,20 +1034,29 @@ const VentasPorNegocio = () => {
               <Button type="primary" onClick={handleBuscarTransacciones}>
                 Buscar Movimientos
               </Button>
-              <Button
-                icon={<PrinterOutlined />}
-                onClick={handleImprimirResumen}
-                type="primary"
-              >
-                Imprimir
-              </Button>
-              {!isEncargadoVentas && (
+              {negocioSeleccionado && (
+                <Button
+                  icon={<DollarOutlined />}
+                  onClick={openSaldoInicialModal}
+                  type={saldoInicial ? "default" : "primary"}
+                  style={saldoInicial ? { borderColor: "#52c41a", color: "#52c41a" } : {}}
+                >
+                  {saldoInicial ? "Editar Saldo Inicial" : "Agregar Saldo Inicial"}
+                </Button>
+              )}
+              {hasBuscado && (
                 <>
+                  <Button
+                    icon={<PrinterOutlined />}
+                    onClick={handleImprimirResumen}
+                    type="primary"
+                  >
+                    Imprimir
+                  </Button>
                   <Button
                     icon={<CreditCardOutlined />}
                     onClick={() => setIsAddPagoOpen(true)}
                     type="primary"
-                    disabled={!negocioSeleccionado}
                   >
                     Agregar Pago
                   </Button>
@@ -843,7 +1064,6 @@ const VentasPorNegocio = () => {
                     icon={<PlusOutlined />}
                     onClick={() => setIsAddNotaCreditoOpen(true)}
                     type="primary"
-                    disabled={!negocioSeleccionado}
                   >
                     Agregar Nota de Crédito
                   </Button>
@@ -865,6 +1085,58 @@ const VentasPorNegocio = () => {
           >
             Acciones
           </Button>
+        </div>
+      )}
+
+      {/* Resumen de Saldo */}
+      {hasBuscado && negocioSeleccionado && (
+        <div className="bg-white rounded-lg shadow-md mb-6">
+          <div className="px-4 py-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Saldo Inicial */}
+              <div className="bg-gray-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Saldo Inicial</p>
+                <p className="text-lg font-bold text-gray-700">
+                  ${(saldoInicial?.monto || 0).toLocaleString("es-AR")}
+                </p>
+              </div>
+              {/* Total Ventas */}
+              <div className="bg-blue-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-blue-600 uppercase tracking-wide">Ventas</p>
+                <p className="text-lg font-bold text-blue-700">
+                  +${transacciones
+                    .filter((t) => t.tipo === "Venta")
+                    .reduce((acc, t) => acc + Number(t.total_con_descuento ?? t.total ?? t.monto ?? 0), 0)
+                    .toLocaleString("es-AR")}
+                </p>
+              </div>
+              {/* Total Pagos + NC */}
+              <div className="bg-green-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-green-600 uppercase tracking-wide">Pagos + N.C.</p>
+                <p className="text-lg font-bold text-green-700">
+                  -${transacciones
+                    .filter((t) => t.tipo === "Entrega" || t.tipo === "Nota de Crédito")
+                    .reduce((acc, t) => acc + Number(t.monto ?? t.total ?? 0), 0)
+                    .toLocaleString("es-AR")}
+                </p>
+              </div>
+              {/* Saldo Pendiente */}
+              <div className={`rounded-lg p-3 text-center ${saldoPendiente > 0 ? "bg-red-50" : saldoPendiente < 0 ? "bg-green-50" : "bg-gray-50"}`}>
+                <p className={`text-xs uppercase tracking-wide ${saldoPendiente > 0 ? "text-red-600" : saldoPendiente < 0 ? "text-green-600" : "text-gray-600"}`}>
+                  {saldoPendiente > 0 ? "Deuda" : saldoPendiente < 0 ? "Saldo a Favor" : "Saldado"}
+                </p>
+                <p className={`text-xl font-bold ${saldoPendiente > 0 ? "text-red-700" : saldoPendiente < 0 ? "text-green-700" : "text-gray-700"}`}>
+                  {saldoPendiente >= 0 
+                    ? `$${saldoPendiente.toLocaleString("es-AR")}`
+                    : `-$${Math.abs(saldoPendiente).toLocaleString("es-AR")}`
+                  }
+                </p>
+                {saldoPendiente < 0 && (
+                  <p className="text-xs text-green-600 mt-1">El cliente pagó de más</p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1013,11 +1285,6 @@ const VentasPorNegocio = () => {
                 setLoadingPago(false);
                 return;
               }
-              if (montoNum > saldoPendiente) {
-                message.error("El monto supera el saldo pendiente");
-                setLoadingPago(false);
-                return;
-              }
 
               // 1) Registrar CHEQUE (usa centavos si tu backend espera Decimal)
               await api("api/cheques", "POST", {
@@ -1069,16 +1336,15 @@ const VentasPorNegocio = () => {
                 const value = parseFromInputNumber(raw);
                 if (!Number.isFinite(value)) return;
 
-                // validá contra saldo pendiente (permitiendo centavos)
-                if (value > saldoPendiente) {
+                // Mostrar info si supera el saldo, pero permitir ingresar
+                if (saldoPendiente > 0 && value > saldoPendiente) {
+                  const saldoAFavor = value - saldoPendiente;
                   setMontoWarning(
-                    `El monto no puede superar el saldo pendiente ($${saldoPendiente.toLocaleString(
-                      "es-AR"
-                    )})`
+                    `El monto supera la deuda. Generará un saldo a favor de $${saldoAFavor.toLocaleString("es-AR")}`
                   );
-                  return;
+                } else {
+                  setMontoWarning("");
                 }
-                setMontoWarning("");
                 setNuevoMonto(value);
               }}
               stringMode
@@ -1090,7 +1356,9 @@ const VentasPorNegocio = () => {
               parser={parseFromInputNumber}
             />
             {montoWarning && (
-              <div style={{ color: "red", marginTop: 4 }}>{montoWarning}</div>
+              <div style={{ color: "#1890ff", marginTop: 4, fontSize: 12 }}>
+                ℹ️ {montoWarning}
+              </div>
             )}
           </div>
           <div>
@@ -1184,6 +1452,61 @@ const VentasPorNegocio = () => {
         </div>
       </Modal>
 
+      {/* Modal para Saldo Inicial */}
+      <Modal
+        title={saldoInicial ? "Editar Saldo Inicial" : "Agregar Saldo Inicial"}
+        open={isAddSaldoInicialOpen}
+        onCancel={() => {
+          setIsAddSaldoInicialOpen(false);
+          setMontoSaldoInicial(null);
+          setDescripcionSaldoInicial("");
+        }}
+        onOk={handleGuardarSaldoInicial}
+        okText={saldoInicial ? "Actualizar" : "Guardar"}
+        confirmLoading={loadingSaldoInicial}
+      >
+        <div className="space-y-4">
+          {saldoInicial && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-blue-700">
+                <strong>Nota:</strong> Este negocio ya tiene un saldo inicial registrado.
+                Podés editar el monto si es necesario.
+              </p>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Monto del saldo inicial
+            </label>
+            <InputNumber
+              value={montoSaldoInicial}
+              onChange={setMontoSaldoInicial}
+              min={0}
+              style={{ width: "100%" }}
+              placeholder="Ej: 150000"
+              formatter={(value) =>
+                `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+              }
+              parser={(value) => value?.replace(/\$\s?|(\.)/g, "")}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Ingresá la deuda que tenía el cliente antes de usar el sistema
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Descripción (opcional)
+            </label>
+            <Input.TextArea
+              value={descripcionSaldoInicial}
+              onChange={(e) => setDescripcionSaldoInicial(e.target.value)}
+              placeholder="Ej: Deuda acumulada antes del 01/12/2024"
+              rows={2}
+            />
+          </div>
+        </div>
+      </Modal>
+
       {/* Drawer para filtros en móvil - Ahora con DatePicker individuales */}
       <Drawer
         title="Acciones"
@@ -1193,25 +1516,42 @@ const VentasPorNegocio = () => {
         height="70%"
       >
         <div className="space-y-2">
-          <Button
-            icon={<PrinterOutlined />}
-            onClick={handleImprimirResumen}
-            type="primary"
-            style={{ width: "100%" }}
-          >
-            Imprimir
-          </Button>
-          {!isEncargadoVentas && (
+          {/* Botón de Saldo Inicial siempre visible si hay negocio */}
+          {negocioSeleccionado && (
+            <Button
+              icon={<DollarOutlined />}
+              onClick={() => {
+                openSaldoInicialModal();
+                setFilterDrawerVisible(false);
+              }}
+              type={saldoInicial ? "default" : "primary"}
+              style={
+                saldoInicial
+                  ? { width: "100%", borderColor: "#52c41a", color: "#52c41a" }
+                  : { width: "100%" }
+              }
+            >
+              {saldoInicial ? "Editar Saldo Inicial" : "Agregar Saldo Inicial"}
+            </Button>
+          )}
+          {hasBuscado ? (
             <>
+              <Button
+                icon={<PrinterOutlined />}
+                onClick={handleImprimirResumen}
+                type="primary"
+                style={{ width: "100%" }}
+              >
+                Imprimir
+              </Button>
               <Button
                 icon={<CreditCardOutlined />}
                 onClick={() => {
                   setIsAddPagoOpen(true);
-                  setActionDrawerVisible(false);
+                  setFilterDrawerVisible(false);
                 }}
                 type="primary"
                 style={{ width: "100%" }}
-                disabled={!negocioSeleccionado}
               >
                 Agregar Pago
               </Button>
@@ -1219,15 +1559,18 @@ const VentasPorNegocio = () => {
                 icon={<PlusOutlined />}
                 onClick={() => {
                   setIsAddNotaCreditoOpen(true);
-                  setActionDrawerVisible(false);
+                  setFilterDrawerVisible(false);
                 }}
                 type="primary"
                 style={{ width: "100%" }}
-                disabled={!negocioSeleccionado}
               >
                 Agregar Nota de Crédito
               </Button>
             </>
+          ) : (
+            <p className="text-gray-500 text-center">
+              Buscá movimientos primero para ver las acciones disponibles
+            </p>
           )}
         </div>
       </Drawer>
@@ -1238,7 +1581,7 @@ const VentasPorNegocio = () => {
         placement="bottom"
         onClose={() => setActionDrawerVisible(false)}
         open={actionDrawerVisible}
-        height={isEncargadoVentas ? "40%" : "50%"}
+        height="50%"
       >
         {selectedRecord && (
           <div className="space-y-4">
@@ -1254,8 +1597,16 @@ const VentasPorNegocio = () => {
                 <strong>Total:</strong> ${selectedRecord.monto_formateado}
               </p>
               <p>
-                <strong>Saldo:</strong> $
-                {selectedRecord.saldo_restante?.toLocaleString("es-AR") || "-"}
+                <strong>Saldo:</strong>{" "}
+                <span style={{ 
+                  color: selectedRecord.saldo_restante > 0 ? "#cf1322" : selectedRecord.saldo_restante < 0 ? "#389e0d" : "#666",
+                  fontWeight: 500 
+                }}>
+                  {selectedRecord.saldo_restante >= 0 
+                    ? `$${(selectedRecord.saldo_restante || 0).toLocaleString("es-AR")}`
+                    : `-$${Math.abs(selectedRecord.saldo_restante).toLocaleString("es-AR")}`
+                  }
+                </span>
               </p>
             </div>
 
@@ -1269,29 +1620,25 @@ const VentasPorNegocio = () => {
                 Ver detalle
               </Button>
 
-              {!isEncargadoVentas && (
-                <>
-                  <Button
-                    icon={<EditOutlined />}
-                    onClick={() => handleEditar(selectedRecord)}
-                    style={{ width: "100%" }}
-                    disabled={selectedRecord?.tipo === "Nota de Crédito"}
-                  >
-                    Editar
-                  </Button>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => handleEditar(selectedRecord)}
+                style={{ width: "100%" }}
+                disabled={selectedRecord?.tipo === "Nota de Crédito"}
+              >
+                Editar
+              </Button>
 
-                  <Button
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() =>
-                      handleEliminar(selectedRecord.id, selectedRecord.tipo)
-                    }
-                    style={{ width: "100%" }}
-                  >
-                    Eliminar {selectedRecord?.tipo?.toLowerCase()}
-                  </Button>
-                </>
-              )}
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() =>
+                  handleEliminar(selectedRecord.id, selectedRecord.tipo, selectedRecord)
+                }
+                style={{ width: "100%" }}
+              >
+                Eliminar {selectedRecord?.tipo?.toLowerCase()}
+              </Button>
             </div>
           </div>
         )}

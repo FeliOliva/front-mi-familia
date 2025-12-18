@@ -30,6 +30,9 @@ import {
   ShopOutlined,
   BankOutlined,
   SolutionOutlined,
+  EyeOutlined,
+  EditOutlined,
+  PrinterOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import jsPDF from "jspdf";
@@ -48,13 +51,13 @@ const readCartDraft = () => {
 const writeCartDraft = (items = []) => {
   try {
     localStorage.setItem(CART_KEY, JSON.stringify(items));
-  } catch {}
+  } catch { }
 };
 
 const clearCartDraft = () => {
   try {
     localStorage.removeItem(CART_KEY);
-  } catch {}
+  } catch { }
 };
 const normalizeDraftItem = (p) => ({
   id: p.id,
@@ -254,6 +257,10 @@ const Ventas = () => {
   const negocioEsEditable = !!negocioActual?.esEditable;
 
   const cartEffectInitialized = useRef(false);
+  const inputBuscadorRef = useRef(null);
+  const inputCantidadRef = useRef(null);
+  const [productoPreseleccionado, setProductoPreseleccionado] = useState(null);
+  const [indiceLista, setIndiceLista] = useState(-1); // índice del producto resaltado en la lista
   const cargarProductos = async () => {
     if (productosCargados) return; // ya están en memoria
 
@@ -415,12 +422,20 @@ const Ventas = () => {
       return;
     }
 
+    // Búsqueda más flexible: dividir en palabras y buscar que todas estén presentes
+    const palabras = termino.split(/\s+/).filter(p => p.length > 0);
+
     const filtrados = todosLosProductos
-      .filter((p) => p.nombre.toLowerCase().includes(termino))
+      .filter((p) => {
+        const nombreLower = p.nombre.toLowerCase();
+        // Verificar que todas las palabras del término estén en el nombre
+        return palabras.every(palabra => nombreLower.includes(palabra));
+      })
       .slice(0, 50); // máximo 50 mostrados
 
     setProductosDisponibles(filtrados);
     setShowProductList(filtrados.length > 0);
+    setIndiceLista(-1); // Resetear índice al buscar
   };
 
   useEffect(() => {
@@ -434,7 +449,62 @@ const Ventas = () => {
     return () => clearTimeout(handler);
   }, [productoBuscado, hasInputFocus, productosCargados]);
 
-  const agregarProducto = (producto) => {
+  // Scroll automático al elemento resaltado con flechas
+  useEffect(() => {
+    if (indiceLista >= 0) {
+      const elemento = document.getElementById(`producto-item-${indiceLista}`);
+      if (elemento) {
+        elemento.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+    }
+  }, [indiceLista]);
+
+  // Atajo F2 para finalizar venta
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Solo si el modal de venta está abierto
+      if (!modalVisible) return;
+
+      if (e.key === "F2") {
+        e.preventDefault();
+
+        // Validar que haya datos para guardar
+        if (!selectedNegocio || !selectedCaja || productosSeleccionados.length === 0) {
+          message.warning("Completá negocio, caja y agregá al menos un producto");
+          return;
+        }
+
+        // Calcular total aquí para evitar problemas de orden
+        const totalVenta = productosSeleccionados.reduce(
+          (acc, p) => acc + p.precio * p.cantidad,
+          0
+        );
+
+        // Mostrar confirmación
+        Modal.confirm({
+          title: "¿Finalizar venta?",
+          content: (
+            <div>
+              <p><strong>Negocio:</strong> {negocios.find(n => n.id === selectedNegocio)?.nombre}</p>
+              <p><strong>Productos:</strong> {productosSeleccionados.length}</p>
+              <p><strong>Total:</strong> ${totalVenta.toLocaleString("es-AR")}</p>
+            </div>
+          ),
+          okText: "Sí",
+          cancelText: "Cancelar",
+          autoFocusButton: "ok",
+          onOk: () => {
+            guardarVenta();
+          },
+        });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalVisible, selectedNegocio, selectedCaja, productosSeleccionados, negocios]);
+
+  const agregarProducto = (producto, volverAlBuscador = true) => {
     if (!cantidad || cantidad <= 0) {
       message.warning("La cantidad debe ser mayor a 0");
       return;
@@ -468,6 +538,14 @@ const Ventas = () => {
     setUnidadSeleccionada("");
     setProductosDisponibles([]);
     setShowProductList(false);
+    setProductoPreseleccionado(null);
+
+    // Volver el foco al buscador de productos
+    if (volverAlBuscador) {
+      setTimeout(() => {
+        inputBuscadorRef.current?.focus();
+      }, 100);
+    }
   };
 
   const modificarCantidad = (index, incremento) => {
@@ -700,16 +778,25 @@ const Ventas = () => {
       title: "Acciones",
       key: "acciones",
       render: (_, record) => (
-        <Space size="middle">
-          <Button size="small" onClick={() => handleVerDetalle(record)}>
-            Ver
+        <Space size={isMobile ? "small" : "middle"}>
+          <Button
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => handleVerDetalle(record)}
+          >
+            {!isMobile && "Ver"}
           </Button>
-          <Button size="small" onClick={() => editarVenta(record)}>
-            Editar
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => editarVenta(record)}
+          >
+            {!isMobile && "Editar"}
           </Button>
           <Button
             size="small"
             danger
+            icon={<DeleteOutlined />}
             onClick={() => {
               Modal.confirm({
                 title: "¿Estás seguro?",
@@ -721,10 +808,11 @@ const Ventas = () => {
               });
             }}
           >
-            Eliminar
+            {!isMobile && "Eliminar"}
           </Button>
           <Button
             size="small"
+            icon={<PrinterOutlined />}
             onClick={async () => {
               try {
                 await generarPDF(record);
@@ -733,48 +821,122 @@ const Ventas = () => {
               }
             }}
           >
-            Imprimir
+            {!isMobile && "Imprimir"}
           </Button>
         </Space>
       ),
     },
   ];
 
+  // Seleccionar producto y mover foco a cantidad
+  const seleccionarProducto = (item) => {
+    setProductoPreseleccionado(item);
+    setUnidadSeleccionada(item._unidad);
+    setShowProductList(false);
+    setProductoBuscado(item.nombre);
+    // Mover foco al input de cantidad
+    setTimeout(() => {
+      inputCantidadRef.current?.focus();
+      inputCantidadRef.current?.select();
+    }, 50);
+  };
+
+  // Agregar producto preseleccionado con Enter
+  const handleCantidadKeyDown = (e) => {
+    if (e.key === "Enter" && productoPreseleccionado) {
+      e.preventDefault();
+      agregarProducto(productoPreseleccionado);
+    }
+  };
+
+  // Manejar teclas en el buscador: flechas para navegar, Enter/Tab para seleccionar
+  const handleBuscadorKeyDown = (e) => {
+    // Tab: si hay productos disponibles, preseleccionar y pasar a cantidad
+    if (e.key === "Tab" && !e.shiftKey && showProductList && productosDisponibles.length > 0) {
+      e.preventDefault();
+      const indiceAUsar = indiceLista >= 0 ? indiceLista : 0;
+      if (productosDisponibles[indiceAUsar]) {
+        seleccionarProducto(productosDisponibles[indiceAUsar]);
+      }
+      return;
+    }
+
+    if (!showProductList || productosDisponibles.length === 0) return;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setIndiceLista((prev) =>
+          prev < productosDisponibles.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setIndiceLista((prev) => (prev > 0 ? prev - 1 : 0));
+        break;
+      case "Enter":
+        e.preventDefault();
+        // Si hay un índice seleccionado, usar ese; sino usar el primero
+        const indiceAUsar = indiceLista >= 0 ? indiceLista : 0;
+        if (productosDisponibles[indiceAUsar]) {
+          seleccionarProducto(productosDisponibles[indiceAUsar]);
+        }
+        break;
+      case "Escape":
+        e.preventDefault();
+        setShowProductList(false);
+        setIndiceLista(-1);
+        break;
+      default:
+        break;
+    }
+  };
+
   // Renderizado de cada producto en la lista de búsqueda
-  const renderProductItem = (item) => (
-    <List.Item
-      key={item.id}
-      style={{ cursor: "pointer", padding: "8px 12px" }}
-      onClick={() => {
-        setUnidadSeleccionada(item._unidad);
-        agregarProducto(item);
-      }}
-    >
-      <List.Item.Meta
-        avatar={
-          <Avatar
-            icon={<ShoppingCartOutlined />}
-            style={{ backgroundColor: "#1890ff" }}
-          />
-        }
-        title={item.nombre}
-        description={
-          <Space>
-            <Tag color="blue">{getUnidadAbbr(item._unidad)}</Tag>{" "}
-            <Tag color="green">${item.precio.toLocaleString("es-AR")}</Tag>
-          </Space>
-        }
-      />
-      <Button
-        type="primary"
-        size="small"
-        className={isMobile ? "max-w-16" : ""}
-        icon={<PlusOutlined />}
+  const renderProductItem = (item, index) => {
+    const isResaltado = index === indiceLista;
+    const isPreseleccionado = productoPreseleccionado?.id === item.id;
+
+    return (
+      <List.Item
+        key={item.id}
+        id={`producto-item-${index}`}
+        style={{
+          cursor: "pointer",
+          padding: "8px 12px",
+          backgroundColor: isResaltado ? "#bae7ff" : isPreseleccionado ? "#e6f7ff" : "transparent",
+          border: isResaltado ? "1px solid #1890ff" : "none",
+          transition: "background-color 0.15s"
+        }}
+        onClick={() => seleccionarProducto(item)}
+        onMouseEnter={() => setIndiceLista(index)}
       >
-        {!isMobile && "Agregar"}
-      </Button>
-    </List.Item>
-  );
+        <List.Item.Meta
+          avatar={
+            <Avatar
+              icon={<ShoppingCartOutlined />}
+              style={{ backgroundColor: isResaltado ? "#1890ff" : "#69c0ff" }}
+            />
+          }
+          title={<span style={{ fontWeight: isResaltado ? "bold" : "normal" }}>{item.nombre}</span>}
+          description={
+            <Space>
+              <Tag color="blue">{getUnidadAbbr(item._unidad)}</Tag>{" "}
+              <Tag color="green">${item.precio.toLocaleString("es-AR")}</Tag>
+            </Space>
+          }
+        />
+        <Button
+          type="primary"
+          size="small"
+          className={isMobile ? "max-w-16" : ""}
+          icon={<PlusOutlined />}
+        >
+          {!isMobile && "Agregar"}
+        </Button>
+      </List.Item>
+    );
+  };
 
   // Renderizado de cada producto en el carrito
   const renderCartItem = (item, index) => (
@@ -851,7 +1013,7 @@ const Ventas = () => {
               )}
               precision={
                 (item._unidad || item.tipoUnidad || "UNIDAD").toUpperCase() ===
-                "KG"
+                  "KG"
                   ? 2
                   : 0
               }
@@ -984,6 +1146,9 @@ const Ventas = () => {
         open={modalVisible}
         onCancel={handleCerrarModal}
         footer={[
+          <span key="hint" style={{ float: "left", color: "#888", fontSize: 12, lineHeight: "32px" }}>
+            💡 Presioná <kbd style={{ background: "#f0f0f0", padding: "2px 6px", borderRadius: 4, border: "1px solid #d9d9d9" }}>F2</kbd> para finalizar rápido
+          </span>,
           <Button key="cancelar" onClick={handleCerrarModal}>
             Cancelar
           </Button>,
@@ -1108,13 +1273,26 @@ const Ventas = () => {
               <Row gutter={[8, 8]}>
                 <Col span={isMobile ? 22 : 18}>
                   <Input
-                    placeholder="Buscar producto (mínimo 2 letras) o tocar Ver todos"
+                    ref={inputBuscadorRef}
+                    placeholder="Buscar producto (mínimo 2 letras) + Enter"
                     value={productoBuscado}
-                    onChange={(e) => setProductoBuscado(e.target.value)}
+                    onChange={(e) => {
+                      const nuevoValor = e.target.value;
+                      // Si había un producto preseleccionado y el usuario escribe algo diferente, limpiar
+                      if (productoPreseleccionado && nuevoValor !== productoPreseleccionado.nombre) {
+                        setProductoPreseleccionado(null);
+                      }
+                      setProductoBuscado(nuevoValor);
+                    }}
                     onFocus={async () => {
                       setHasInputFocus(true);
                       await cargarProductos();
+                      // Si hay un producto preseleccionado, seleccionar todo el texto para reemplazar fácil
+                      if (productoPreseleccionado && inputBuscadorRef.current) {
+                        inputBuscadorRef.current.select();
+                      }
                     }}
+                    onKeyDown={handleBuscadorKeyDown}
                     prefix={<SearchOutlined style={{ color: "#1890ff" }} />}
                     style={{ width: "100%" }}
                     size={isMobile ? "middle" : "large"}
@@ -1123,15 +1301,22 @@ const Ventas = () => {
                 </Col>
                 <Col span={isMobile ? 14 : 6}>
                   <InputNumber
+                    ref={inputCantidadRef}
                     min={0.1}
                     step={0.1}
                     precision={2}
                     value={cantidad}
                     onChange={(value) => setCantidad(value)}
+                    onKeyDown={handleCantidadKeyDown}
                     addonBefore="Cant."
                     style={{ width: "100%" }}
                     size={isMobile ? "middle" : "large"}
                   />
+                  {productoPreseleccionado && (
+                    <div style={{ fontSize: 11, color: "#1890ff", marginTop: 2 }}>
+                      ↵ Enter para agregar
+                    </div>
+                  )}
                 </Col>
                 <Col span={isMobile ? 10 : 4}>
                   <Button

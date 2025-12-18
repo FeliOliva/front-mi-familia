@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   Table,
   Button,
@@ -12,10 +12,27 @@ import {
 } from "antd";
 import { useParams } from "react-router-dom";
 import { api } from "../../services/api";
+import {
+  EditOutlined,
+  StopOutlined,
+  CheckOutlined,
+} from "@ant-design/icons";
 
 const { Title } = Typography;
 
+// Hook para detectar móvil
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+  return isMobile;
+};
+
 const Negocios = () => {
+  const isMobile = useIsMobile();
   const { id } = useParams();
 
   const [negocios, setNegocios] = useState([]);
@@ -26,6 +43,7 @@ const Negocios = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editingNegocio, setEditingNegocio] = useState(null);
   const [form] = Form.useForm();
+  const inputNombreRef = useRef(null);
 
   // paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -49,6 +67,41 @@ const Negocios = () => {
   useEffect(() => {
     fetchNegocios();
   }, []);
+
+  // AutoFocus en el input de nombre al abrir el modal
+  useEffect(() => {
+    if (modalVisible) {
+      setTimeout(() => {
+        inputNombreRef.current?.focus();
+        inputNombreRef.current?.select();
+      }, 100);
+    }
+  }, [modalVisible]);
+
+  // F2 para guardar rápido
+  useEffect(() => {
+    if (!modalVisible) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "F2") {
+        e.preventDefault();
+        Modal.confirm({
+          title: isEditing ? "¿Confirmar edición de negocio?" : "¿Confirmar registro de negocio?",
+          content: (
+            <div>
+              <p><strong>Nombre:</strong> {form.getFieldValue("nombre")}</p>
+              <p><strong>Dirección:</strong> {form.getFieldValue("direccion") || "-"}</p>
+            </div>
+          ),
+          okText: "Sí",
+          cancelText: "Cancelar",
+          autoFocusButton: "ok",
+          onOk: () => form.submit(),
+        });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalVisible, isEditing, form]);
 
   // === Crear / Editar (igual que Productos) ===
   const openAddModal = () => {
@@ -188,15 +241,20 @@ const Negocios = () => {
       title: "Acciones",
       key: "acciones",
       render: (_, record) => (
-        <Space size="middle">
-          <Button size="small" onClick={() => openEditModal(record)}>
-            Editar
+        <Space size={isMobile ? "small" : "middle"}>
+          <Button 
+            size="small" 
+            icon={<EditOutlined />}
+            onClick={() => openEditModal(record)}
+          >
+            {!isMobile && "Editar"}
           </Button>
           {record.estado === 1 ? (
             <Button
               danger
               type="primary"
               size="small"
+              icon={<StopOutlined />}
               style={{
                 backgroundColor: "white",
                 borderColor: "#ff4d4f",
@@ -204,15 +262,16 @@ const Negocios = () => {
               }}
               onClick={() => handleDeshabilitar(record.id)}
             >
-              Deshabilitar
+              {!isMobile && "Deshabilitar"}
             </Button>
           ) : (
             <Button
               type="primary"
               size="small"
+              icon={<CheckOutlined />}
               onClick={() => handleHabilitar(record.id)}
             >
-              Habilitar
+              {!isMobile && "Habilitar"}
             </Button>
           )}
         </Space>
@@ -308,9 +367,22 @@ const Negocios = () => {
           setEditingNegocio(null);
           form.resetFields();
         }}
-        onOk={() => form.submit()}
-        okText="Guardar"
-        cancelText="Cancelar"
+        footer={[
+          <span key="f2-hint" style={{ float: "left", color: "#888", fontSize: "0.85em" }}>
+            💡 Presioná F2 para guardar rápido
+          </span>,
+          <Button key="cancelar" onClick={() => {
+            setModalVisible(false);
+            setIsEditing(false);
+            setEditingNegocio(null);
+            form.resetFields();
+          }}>
+            Cancelar
+          </Button>,
+          <Button key="guardar" type="primary" onClick={() => form.submit()}>
+            Guardar
+          </Button>,
+        ]}
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
           <Form.Item
@@ -318,7 +390,7 @@ const Negocios = () => {
             label="Nombre del negocio"
             rules={[{ required: true, message: "Ingrese un nombre" }]}
           >
-            <Input placeholder="Nombre del negocio" />
+            <Input ref={inputNombreRef} placeholder="Nombre del negocio" />
           </Form.Item>
           <Form.Item
             name="direccion"

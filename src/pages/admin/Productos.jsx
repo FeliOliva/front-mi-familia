@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   Table,
   message,
@@ -12,10 +12,27 @@ import {
   Checkbox,
 } from "antd";
 import { api } from "../../services/api";
+import {
+  EditOutlined,
+  StopOutlined,
+  CheckOutlined,
+} from "@ant-design/icons";
 
 const { Option } = Select;
 
+// Hook para detectar móvil
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+  return isMobile;
+};
+
 const Productos = () => {
+  const isMobile = useIsMobile();
   const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [loading, setLoading] = useState(true);
@@ -28,6 +45,7 @@ const Productos = () => {
   const [editingProduct, setEditingProduct] = useState(null);
 
   const [form] = Form.useForm();
+  const inputNombreRef = useRef(null);
   const [registrarNuevaMedida, setRegistrarNuevaMedida] = useState(false);
   const [nombreNuevaMedida, setNombreNuevaMedida] = useState("");
   const [tiposUnidades, setTiposUnidades] = useState([]);
@@ -80,8 +98,28 @@ const Productos = () => {
       fetchTiposUnidades();
       setRegistrarNuevaMedida(false);
       setNombreNuevaMedida("");
+      // AutoFocus en el campo nombre al abrir el modal
+      setTimeout(() => {
+        inputNombreRef.current?.focus();
+        inputNombreRef.current?.select();
+      }, 100);
     }
   }, [modalVisible]);
+
+  // Atajo F2 para guardar producto
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!modalVisible) return;
+      
+      if (e.key === "F2") {
+        e.preventDefault();
+        form.submit();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalVisible, form]);
 
   useEffect(() => {
     fetchProductos(currentPage, debouncedQ, filtroEstado);
@@ -157,10 +195,10 @@ const Productos = () => {
       }
     }
 
-    // payload usando SOLO 'precio'
     const body = {
       nombre: values.nombre,
-      precio: values.precio, // ← este es el que importa
+      precio: values.precio,
+      precioInicial: values.precio,
       tipoUnidadId,
       rol_usuario,
     };
@@ -238,15 +276,20 @@ const Productos = () => {
       title: "Acciones",
       key: "acciones",
       render: (_, record) => (
-        <Space size="middle">
-          <Button size="small" onClick={() => openEditModal(record)}>
-            Editar
+        <Space size={isMobile ? "small" : "middle"}>
+          <Button 
+            size="small" 
+            icon={<EditOutlined />}
+            onClick={() => openEditModal(record)}
+          >
+            {!isMobile && "Editar"}
           </Button>
           {record.estado === 1 ? (
             <Button
               danger
               type="primary"
               size="small"
+              icon={<StopOutlined />}
               style={{
                 backgroundColor: "white",
                 borderColor: "#ff4d4f",
@@ -254,15 +297,16 @@ const Productos = () => {
               }}
               onClick={() => toggleProductos(record.id, record.estado)}
             >
-              Desactivar
+              {!isMobile && "Desactivar"}
             </Button>
           ) : (
             <Button
               type="primary"
               size="small"
+              icon={<CheckOutlined />}
               onClick={() => toggleProductos(record.id, record.estado)}
             >
-              Activar
+              {!isMobile && "Activar"}
             </Button>
           )}
         </Space>
@@ -376,9 +420,22 @@ const Productos = () => {
           setEditingProduct(null);
           form.resetFields();
         }}
-        onOk={() => form.submit()}
-        okText="Guardar"
-        cancelText="Cancelar"
+        footer={[
+          <span key="hint" style={{ float: "left", color: "#888", fontSize: 12, lineHeight: "32px" }}>
+            💡 <kbd style={{ background: "#f0f0f0", padding: "2px 6px", borderRadius: 4, border: "1px solid #d9d9d9" }}>F2</kbd> o <kbd style={{ background: "#f0f0f0", padding: "2px 6px", borderRadius: 4, border: "1px solid #d9d9d9" }}>Enter</kbd> para guardar
+          </span>,
+          <Button key="cancelar" onClick={() => {
+            setModalVisible(false);
+            setIsEditing(false);
+            setEditingProduct(null);
+            form.resetFields();
+          }}>
+            Cancelar
+          </Button>,
+          <Button key="guardar" type="primary" onClick={() => form.submit()}>
+            Guardar
+          </Button>,
+        ]}
       >
         <Form layout="vertical" form={form} onFinish={onFinish}>
           <Form.Item
@@ -386,7 +443,7 @@ const Productos = () => {
             label="Nombre"
             rules={[{ required: true, message: "Ingrese un nombre" }]}
           >
-            <Input placeholder="Ej: Acelga" />
+            <Input ref={inputNombreRef} placeholder="Ej: Acelga" />
           </Form.Item>
 
           <Form.Item
@@ -402,16 +459,38 @@ const Productos = () => {
             />
           </Form.Item>
 
+          {!registrarNuevaMedida && (
+            <Form.Item
+              name="tipoUnidadId"
+              label="Unidad de medida"
+              rules={[{ required: !registrarNuevaMedida, message: "Seleccione una unidad" }]}
+              preserve={false}
+            >
+              <Select placeholder="Selecciona una unidad" allowClear>
+                {tiposUnidades.map((u) => (
+                  <Option key={u.id} value={u.id}>
+                    {u.tipo}
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+          )}
+
           <Form.Item>
             <Checkbox
               checked={registrarNuevaMedida}
-              onChange={(e) => setRegistrarNuevaMedida(e.target.checked)}
+              onChange={(e) => {
+                setRegistrarNuevaMedida(e.target.checked);
+                if (e.target.checked) {
+                  form.setFieldValue("tipoUnidadId", undefined);
+                }
+              }}
             >
               Registrar nueva medida
             </Checkbox>
           </Form.Item>
 
-          {registrarNuevaMedida ? (
+          {registrarNuevaMedida && (
             <Form.Item
               label="Nombre de la nueva medida"
               required
@@ -425,20 +504,6 @@ const Productos = () => {
                 onChange={(e) => setNombreNuevaMedida(e.target.value)}
                 placeholder="Ej: Unidad, Kg, Pack..."
               />
-            </Form.Item>
-          ) : (
-            <Form.Item
-              name="tipoUnidadId"
-              label="Unidad de medida"
-              rules={[{ required: true, message: "Seleccione una unidad" }]}
-            >
-              <Select placeholder="Selecciona una unidad" allowClear>
-                {tiposUnidades.map((u) => (
-                  <Option key={u.id} value={u.id}>
-                    {u.tipo}
-                  </Option>
-                ))}
-              </Select>
             </Form.Item>
           )}
         </Form>
