@@ -72,28 +72,64 @@ const prepararTransacciones = (raw) => {
     const montoBase = Math.abs(Number(
       item.total_con_descuento ?? item.total ?? item.monto ?? 0
     ));
+    
+    // Inferir el tipo si no viene en el item
+    let tipo = item.tipo;
+    if (!tipo) {
+      if (item.esSaldoInicial || item.saldoInicial) {
+        tipo = "Saldo Inicial";
+      } else if (item.entregaId || item.metodoPagoId !== undefined) {
+        tipo = "Entrega";
+      } else if (item.notaCreditoId || item.motivo !== undefined) {
+        tipo = "Nota de Crédito";
+      } else if (item.ventaId || item.nroVenta !== undefined || item.detalleventa !== undefined) {
+        tipo = "Venta";
+      } else {
+        // Default: intentar inferir por campos presentes
+        tipo = "Entrega"; // Asumir entrega si no hay otros indicadores
+      }
+    }
+    
     // Saldo Inicial y Ventas SUMAN (deuda), Entregas y NC RESTAN (pagos)
-    const esSumaDeuda = item.tipo === "Venta" || item.tipo === "Saldo Inicial" || item.esSaldoInicial;
+    const esSumaDeuda = tipo === "Venta" || tipo === "Saldo Inicial" || item.esSaldoInicial;
     const signo = esSumaDeuda ? +1 : -1;
     
     // Asegurar que los IDs se preserven correctamente
     const idFinal = item.id || item.ventaId || item.entregaId || item.notaCreditoId;
     
+    // Asegurar que el campo numero esté presente
+    let numero = item.numero;
+    if (!numero) {
+      if (tipo === "Venta") {
+        numero = item.nroVenta || item.numero || null;
+      } else if (tipo === "Entrega") {
+        numero = item.nroEntrega || item.numero || null;
+      } else if (tipo === "Nota de Crédito") {
+        numero = item.nroNotaCredito || item.numero || null;
+      }
+    }
+    
     return {
       ...item,
+      tipo, // Asegurar que siempre haya un tipo
       id: idFinal, // Asegurar que siempre haya un id
-      ventaId: item.tipo === "Venta" ? (item.ventaId || item.id) : item.ventaId, // Preservar ventaId para ventas
+      ventaId: tipo === "Venta" ? (item.ventaId || item.id) : item.ventaId, // Preservar ventaId para ventas
       fecha,
+      numero, // Asegurar que el campo numero esté presente
       __montoOriginal: montoBase, // para mostrar (siempre positivo)
       __montoFirmado: signo * montoBase, // para acumular saldo
-      uniqueId: `${item.tipo}-${idFinal}`,
+      uniqueId: `${tipo}-${idFinal}`,
     };
   });
 
-  const asc = base.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+  // Ordenar todas las transacciones por fecha descendente (más nuevo a más antiguo)
+  const ordenadasPorFecha = base.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 
+  // Calcular el saldo acumulado desde la más antigua hacia la más nueva
+  // Primero invertimos el orden para calcular el saldo correctamente
+  const ordenadasAscendente = [...ordenadasPorFecha].reverse();
   let saldo = 0;
-  const conSaldo = asc.map((it) => {
+  const conSaldoAscendente = ordenadasAscendente.map((it) => {
     saldo += it.__montoFirmado;
     return {
       ...it,
@@ -102,15 +138,8 @@ const prepararTransacciones = (raw) => {
     };
   });
 
-  // Separar Saldo Inicial del resto
-  const saldoInicial = conSaldo.filter((it) => it.tipo === "Saldo Inicial" || it.esSaldoInicial);
-  const otrasTransacciones = conSaldo.filter((it) => it.tipo !== "Saldo Inicial" && !it.esSaldoInicial);
-  
-  // Ordenar el resto por fecha ascendente (más antiguo primero, de abajo hacia arriba)
-  otrasTransacciones.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-  
-  // Saldo Inicial al final, después del resto ordenado por fecha ascendente
-  return [...otrasTransacciones, ...saldoInicial];
+  // Retornar en orden descendente (más nuevo primero)
+  return conSaldoAscendente.reverse();
 };
 
 const VentasPorNegocio = () => {
@@ -578,21 +607,36 @@ const VentasPorNegocio = () => {
   };
 
   const handleBuscarTransacciones = async () => {
-    if (!negocioSeleccionado) return message.warning("Seleccioná un negocio");
-    if (!fechaInicio || !fechaFin) return message.warning("Seleccioná fechas");
+    if (!negocioSeleccionado) {
+      message.warning("Seleccioná un negocio");
+      return;
+    }
+    
+    // Si no hay fechas, usar fechas por defecto (último mes hasta hoy)
+    let fechaInicioFinal = fechaInicio;
+    let fechaFinFinal = fechaFin;
+    
+    if (!fechaInicioFinal || !fechaFinFinal) {
+      fechaInicioFinal = dayjs().subtract(1, "month");
+      fechaFinFinal = dayjs();
+      setFechaInicio(fechaInicioFinal);
+      setFechaFin(fechaFinFinal);
+    }
 
-    const startDate = dayjs(fechaInicio).format("YYYY-MM-DD");
-    const endDate = dayjs(fechaFin).format("YYYY-MM-DD");
+    const startDate = dayjs(fechaInicioFinal).format("YYYY-MM-DD");
+    const endDate = dayjs(fechaFinFinal).format("YYYY-MM-DD");
 
     try {
       const res = await api(
         `api/resumenCuenta/negocio/${negocioSeleccionado}?startDate=${startDate}&endDate=${endDate}`
       );
-      setTransacciones(prepararTransacciones(res));
+      const transaccionesPreparadas = prepararTransacciones(res);
+      setTransacciones(transaccionesPreparadas);
       setHasBuscado(true);
       setFilterDrawerVisible(false);
-    } catch {
-      message.error("Error al cargar las transacciones");
+    } catch (error) {
+      console.error("Error al cargar las transacciones:", error);
+      message.error("Error al cargar las transacciones: " + (error.message || "Error desconocido"));
     }
   };
 
@@ -607,8 +651,16 @@ const VentasPorNegocio = () => {
     }
   };
 
-  // Obtener resumen (función referenciada pero no definida)
+  // Obtener resumen (función para refrescar después de cambios)
   const obtenerResumen = () => {
+    // Si no se ha buscado antes, hacer la búsqueda inicial
+    if (!hasBuscado && (!fechaInicio || !fechaFin)) {
+      // Usar fechas por defecto si no están definidas
+      const fechaInicioDefault = fechaInicio || dayjs().subtract(1, "month");
+      const fechaFinDefault = fechaFin || dayjs();
+      setFechaInicio(fechaInicioDefault);
+      setFechaFin(fechaFinDefault);
+    }
     handleBuscarTransacciones();
   };
 
@@ -808,11 +860,8 @@ const VentasPorNegocio = () => {
     doc.text(`Fecha de emisión: ${dayjs().format("DD/MM/YYYY HH:mm")}`, 14, y);
     y += 8;
 
-    // Ordenar transacciones: resto por fecha ASC, luego Saldo Inicial al final
-    const saldoInicialPDF = transacciones.filter((t) => t.tipo === "Saldo Inicial" || t.esSaldoInicial);
-    const otrasTransaccionesPDF = transacciones.filter((t) => t.tipo !== "Saldo Inicial" && !t.esSaldoInicial);
-    otrasTransaccionesPDF.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-    const transaccionesOrdenadas = [...otrasTransaccionesPDF, ...saldoInicialPDF];
+    // Las transacciones ya vienen ordenadas por fecha de manera cronológica
+    const transaccionesOrdenadas = [...transacciones];
 
     // Calcular totales
     const totalVentas = transacciones
@@ -952,88 +1001,95 @@ const VentasPorNegocio = () => {
             Resumen por Negocio
           </h2>
         </div>
-        <div className="px-4 py-4 flex flex-col sm:flex-row flex-wrap gap-2 md:gap-4 items-start sm:items-center">
-          {/* SOLO filtros principales en móvil */}
-          {isMobile ? (
-            <>
-              <Select
-                style={{ width: "100%", maxWidth: 350 }}
-                placeholder="Selecciona un negocio"
-                onChange={(value) => {
-                  setNegocioSeleccionado(value);
-                  setHasBuscado(false);
-                  setTransacciones([]);
-                }}
-                value={negocioSeleccionado}
-                className="mb-2"
-              >
-                {negocios
-                  .filter((n) => n.estado === 1 && n.esCuentaCorriente)
-                  .map((n) => (
-                    <Option key={n.id} value={n.id}>
-                      {n.nombre}
-                    </Option>
-                  ))}
-              </Select>
-              <div className="flex gap-2 w-full mb-2">
-                <DatePicker
-                  value={fechaInicio}
-                  onChange={(date) => setFechaInicio(date)}
-                  style={{ width: "100%" }}
-                  format="DD/MM/YYYY"
-                  placeholder="Fecha inicial"
-                />
-                <DatePicker
-                  value={fechaFin}
-                  onChange={(date) => setFechaFin(date)}
-                  style={{ width: "100%" }}
-                  format="DD/MM/YYYY"
-                  placeholder="Fecha final"
-                  disabledDate={(current) =>
-                    fechaInicio && current < fechaInicio
-                  }
-                />
-              </div>
-              <div className="flex gap-2 w-full mb-2">
-                <Button
-                  type="primary"
-                  onClick={handleBuscarTransacciones}
-                  className="flex-1"
+        <div className="px-4 py-4 space-y-4">
+          {/* Primera fila: Filtros principales */}
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2 md:gap-4 items-start sm:items-center">
+            {isMobile ? (
+              <>
+                <Select
+                  style={{ width: "100%", maxWidth: 350 }}
+                  placeholder="Selecciona un negocio"
+                  onChange={(value) => {
+                    setNegocioSeleccionado(value);
+                    setHasBuscado(false);
+                    setTransacciones([]);
+                  }}
+                  value={negocioSeleccionado}
+                  className="mb-2"
                 >
+                  {negocios
+                    .filter((n) => n.estado === 1 && n.esCuentaCorriente)
+                    .map((n) => (
+                      <Option key={n.id} value={n.id}>
+                        {n.nombre}
+                      </Option>
+                    ))}
+                </Select>
+                <div className="flex gap-2 w-full mb-2">
+                  <DatePicker
+                    value={fechaInicio}
+                    onChange={(date) => setFechaInicio(date)}
+                    style={{ width: "100%" }}
+                    format="DD/MM/YYYY"
+                    placeholder="Fecha inicial"
+                  />
+                  <DatePicker
+                    value={fechaFin}
+                    onChange={(date) => setFechaFin(date)}
+                    style={{ width: "100%" }}
+                    format="DD/MM/YYYY"
+                    placeholder="Fecha final"
+                    disabledDate={(current) =>
+                      fechaInicio && current < fechaInicio
+                    }
+                  />
+                </div>
+                <div className="flex gap-2 w-full mb-2">
+                  <Button
+                    type="primary"
+                    onClick={handleBuscarTransacciones}
+                    className="flex-1"
+                  >
+                    Buscar Movimientos
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Select
+                  style={{ width: "100%", maxWidth: 350 }}
+                  placeholder="Selecciona un negocio"
+                  onChange={(value) => {
+                    setNegocioSeleccionado(value);
+                    setHasBuscado(false);
+                    setTransacciones([]);
+                  }}
+                  value={negocioSeleccionado}
+                >
+                  {negocios
+                    .filter((n) => n.estado === 1 && n.esCuentaCorriente)
+                    .map((n) => (
+                      <Option key={n.id} value={n.id}>
+                        {n.nombre}
+                      </Option>
+                    ))}
+                </Select>
+                <RangePicker
+                  onChange={handleRangePickerChange}
+                  value={[fechaInicio, fechaFin]}
+                  style={{ width: "100%", maxWidth: 350 }}
+                  format="DD/MM/YYYY"
+                />
+                <Button type="primary" onClick={handleBuscarTransacciones}>
                   Buscar Movimientos
                 </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <Select
-                style={{ width: "100%", maxWidth: 350 }}
-                placeholder="Selecciona un negocio"
-                onChange={(value) => {
-                  setNegocioSeleccionado(value);
-                  setHasBuscado(false);
-                  setTransacciones([]);
-                }}
-                value={negocioSeleccionado}
-                className="mb-2"
-              >
-                {negocios
-                  .filter((n) => n.estado === 1 && n.esCuentaCorriente)
-                  .map((n) => (
-                    <Option key={n.id} value={n.id}>
-                      {n.nombre}
-                    </Option>
-                  ))}
-              </Select>
-              <RangePicker
-                onChange={handleRangePickerChange}
-                value={[fechaInicio, fechaFin]}
-                style={{ width: "100%", maxWidth: 350, marginBottom: 8 }}
-                format="DD/MM/YYYY"
-              />
-              <Button type="primary" onClick={handleBuscarTransacciones}>
-                Buscar Movimientos
-              </Button>
+              </>
+            )}
+          </div>
+
+          {/* Segunda fila: Botones de acción - Solo se muestran después de buscar */}
+          {hasBuscado && (
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2 pt-2 border-t border-gray-200">
               {negocioSeleccionado && (
                 <Button
                   icon={<DollarOutlined />}
@@ -1044,32 +1100,28 @@ const VentasPorNegocio = () => {
                   {saldoInicial ? "Editar Saldo Inicial" : "Agregar Saldo Inicial"}
                 </Button>
               )}
-              {hasBuscado && (
-                <>
-                  <Button
-                    icon={<PrinterOutlined />}
-                    onClick={handleImprimirResumen}
-                    type="primary"
-                  >
-                    Imprimir
-                  </Button>
-                  <Button
-                    icon={<CreditCardOutlined />}
-                    onClick={() => setIsAddPagoOpen(true)}
-                    type="primary"
-                  >
-                    Agregar Pago
-                  </Button>
-                  <Button
-                    icon={<PlusOutlined />}
-                    onClick={() => setIsAddNotaCreditoOpen(true)}
-                    type="primary"
-                  >
-                    Agregar Nota de Crédito
-                  </Button>
-                </>
-              )}
-            </>
+              <Button
+                icon={<CreditCardOutlined />}
+                onClick={() => setIsAddPagoOpen(true)}
+                type="primary"
+              >
+                Agregar Pago
+              </Button>
+              <Button
+                icon={<PlusOutlined />}
+                onClick={() => setIsAddNotaCreditoOpen(true)}
+                type="primary"
+              >
+                Agregar Nota de Crédito
+              </Button>
+              <Button
+                icon={<PrinterOutlined />}
+                onClick={handleImprimirResumen}
+                type="primary"
+              >
+                Imprimir
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -1515,64 +1567,61 @@ const VentasPorNegocio = () => {
         open={filterDrawerVisible}
         height="70%"
       >
-        <div className="space-y-2">
-          {/* Botón de Saldo Inicial siempre visible si hay negocio */}
-          {negocioSeleccionado && (
+        {hasBuscado ? (
+          <div className="space-y-2">
+            {negocioSeleccionado && (
+              <Button
+                icon={<DollarOutlined />}
+                onClick={() => {
+                  openSaldoInicialModal();
+                  setFilterDrawerVisible(false);
+                }}
+                type={saldoInicial ? "default" : "primary"}
+                style={
+                  saldoInicial
+                    ? { width: "100%", borderColor: "#52c41a", color: "#52c41a" }
+                    : { width: "100%" }
+                }
+              >
+                {saldoInicial ? "Editar Saldo Inicial" : "Agregar Saldo Inicial"}
+              </Button>
+            )}
             <Button
-              icon={<DollarOutlined />}
+              icon={<CreditCardOutlined />}
               onClick={() => {
-                openSaldoInicialModal();
+                setIsAddPagoOpen(true);
                 setFilterDrawerVisible(false);
               }}
-              type={saldoInicial ? "default" : "primary"}
-              style={
-                saldoInicial
-                  ? { width: "100%", borderColor: "#52c41a", color: "#52c41a" }
-                  : { width: "100%" }
-              }
+              type="primary"
+              style={{ width: "100%" }}
             >
-              {saldoInicial ? "Editar Saldo Inicial" : "Agregar Saldo Inicial"}
+              Agregar Pago
             </Button>
-          )}
-          {hasBuscado ? (
-            <>
-              <Button
-                icon={<PrinterOutlined />}
-                onClick={handleImprimirResumen}
-                type="primary"
-                style={{ width: "100%" }}
-              >
-                Imprimir
-              </Button>
-              <Button
-                icon={<CreditCardOutlined />}
-                onClick={() => {
-                  setIsAddPagoOpen(true);
-                  setFilterDrawerVisible(false);
-                }}
-                type="primary"
-                style={{ width: "100%" }}
-              >
-                Agregar Pago
-              </Button>
-              <Button
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  setIsAddNotaCreditoOpen(true);
-                  setFilterDrawerVisible(false);
-                }}
-                type="primary"
-                style={{ width: "100%" }}
-              >
-                Agregar Nota de Crédito
-              </Button>
-            </>
-          ) : (
-            <p className="text-gray-500 text-center">
-              Buscá movimientos primero para ver las acciones disponibles
-            </p>
-          )}
-        </div>
+            <Button
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setIsAddNotaCreditoOpen(true);
+                setFilterDrawerVisible(false);
+              }}
+              type="primary"
+              style={{ width: "100%" }}
+            >
+              Agregar Nota de Crédito
+            </Button>
+            <Button
+              icon={<PrinterOutlined />}
+              onClick={handleImprimirResumen}
+              type="primary"
+              style={{ width: "100%" }}
+            >
+              Imprimir
+            </Button>
+          </div>
+        ) : (
+          <div className="text-center text-gray-500 py-8">
+            <p>Realizá una búsqueda de movimientos para ver las acciones disponibles</p>
+          </div>
+        )}
       </Drawer>
 
       {/* Drawer para acciones en móvil */}
