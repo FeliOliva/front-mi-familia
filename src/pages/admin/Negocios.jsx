@@ -119,21 +119,19 @@ const Negocios = () => {
       nombre: record.nombre,
       direccion: record.direccion,
       esCuentaCorriente: !!record.esCuentaCorriente,
+      esEditable: !!record.esEditable,
     });
   };
 
   const onFinish = async (values) => {
     try {
-      const rol_usuario = parseInt(localStorage.getItem("rol") || "0", 10);
-
       if (isEditing && editingNegocio) {
-        // EDITAR (PUT) — exactamente como pediste
+        // EDITAR (PUT)
         await api(`api/negocio/${editingNegocio.id}`, "PUT", {
           nombre: values.nombre,
           direccion: values.direccion,
           esCuentaCorriente: values.esCuentaCorriente,
-          esEditalble: values.esEditable,
-          rol_usuario,
+          esEditable: values.esEditable,
         });
 
         message.success("Negocio actualizado correctamente");
@@ -153,6 +151,7 @@ const Negocios = () => {
         );
       } else {
         // CREAR (POST)
+        const rol_usuario = parseInt(localStorage.getItem("rol") || "0", 10);
         await api("api/negocio", "POST", {
           ...values,
           clienteId: parseInt(id),
@@ -400,16 +399,13 @@ const Negocios = () => {
             <Input placeholder="Dirección del negocio" />
           </Form.Item>
 
-          {/* Igual que en Productos: este campo solo en creación */}
-          {!isEditing && (
-            <Form.Item
-              name="esCuentaCorriente"
-              valuePropName="checked"
-              initialValue={false}
-            >
-              <Checkbox>Registrar como cuenta corriente</Checkbox>
-            </Form.Item>
-          )}
+          <Form.Item
+            name="esCuentaCorriente"
+            valuePropName="checked"
+            initialValue={false}
+          >
+            <Checkbox>Registrar como cuenta corriente</Checkbox>
+          </Form.Item>
           <Form.Item
             name="esEditable"
             valuePropName="checked"
