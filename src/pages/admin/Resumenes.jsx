@@ -159,6 +159,7 @@ const VentasPorNegocio = () => {
   const [modalTitle, setModalTitle] = useState("");
   const [editingRecord, setEditingRecord] = useState(null);
   const [editMonto, setEditMonto] = useState(null);
+  const [editMetodoPago, setEditMetodoPago] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [filterDrawerVisible, setFilterDrawerVisible] = useState(false);
@@ -330,8 +331,11 @@ const VentasPorNegocio = () => {
           return;
         }
         res = await api(`api/entregas/${record.id}`);
-        setEditingRecord(res);
+        // Agregar el tipo al objeto para que se muestre el selector de método de pago
+        setEditingRecord({ ...res, tipo: "Entrega" });
         setEditMonto(res.monto);
+        // Cargar el método de pago actual si existe
+        setEditMetodoPago(res.metodoPagoId || null);
       } else if (record.tipo === "Nota de Crédito") {
         if (!record.id) {
           message.error("No se pudo identificar la nota de crédito para editar");
@@ -365,6 +369,7 @@ const VentasPorNegocio = () => {
       } else if (editingRecord.tipo === "Entrega") {
         await api(`api/entregas/${editingRecord.id}`, "PUT", {
           monto: editMonto,
+          metodoPagoId: editMetodoPago,
         });
       } else if (editingRecord.tipo === "Nota de Crédito") {
         await api(`api/notasCredito/${editingRecord.id}`, "PUT", {
@@ -373,9 +378,12 @@ const VentasPorNegocio = () => {
       }
       message.success("Registro actualizado correctamente");
       setIsEditModalOpen(false);
+      setEditMonto(null);
+      setEditMetodoPago(null);
       obtenerResumen();
     } catch (err) {
-      message.error("Error al actualizar el registro");
+      const errorMsg = err?.response?.data?.error || err?.message || "Error al actualizar el registro";
+      message.error(errorMsg);
     }
   };
 
@@ -436,6 +444,18 @@ const VentasPorNegocio = () => {
         }
       },
     });
+  };
+
+  // Función para abrir el modal de agregar pago con el saldo pendiente como referencia
+  const openAgregarPagoModal = () => {
+    // Pre-llenar con el saldo pendiente si hay deuda (saldo positivo)
+    if (saldoPendiente > 0) {
+      setNuevoMonto(saldoPendiente);
+    } else {
+      setNuevoMonto(null);
+    }
+    setNuevoMetodoPago(null);
+    setIsAddPagoOpen(true);
   };
 
   const handleAgregarPago = async () => {
@@ -1008,7 +1028,12 @@ const VentasPorNegocio = () => {
               <>
                 <Select
                   style={{ width: "100%", maxWidth: 350 }}
-                  placeholder="Selecciona un negocio"
+                  placeholder="Buscar y seleccionar negocio"
+                  showSearch
+                  optionFilterProp="label"
+                  filterOption={(input, option) =>
+                    (option?.label?.toLowerCase() ?? "").includes(input.toLowerCase())
+                  }
                   onChange={(value) => {
                     setNegocioSeleccionado(value);
                     setHasBuscado(false);
@@ -1020,7 +1045,7 @@ const VentasPorNegocio = () => {
                   {negocios
                     .filter((n) => n.estado === 1 && n.esCuentaCorriente)
                     .map((n) => (
-                      <Option key={n.id} value={n.id}>
+                      <Option key={n.id} value={n.id} label={n.nombre}>
                         {n.nombre}
                       </Option>
                     ))}
@@ -1058,7 +1083,12 @@ const VentasPorNegocio = () => {
               <>
                 <Select
                   style={{ width: "100%", maxWidth: 350 }}
-                  placeholder="Selecciona un negocio"
+                  placeholder="Buscar y seleccionar negocio"
+                  showSearch
+                  optionFilterProp="label"
+                  filterOption={(input, option) =>
+                    (option?.label?.toLowerCase() ?? "").includes(input.toLowerCase())
+                  }
                   onChange={(value) => {
                     setNegocioSeleccionado(value);
                     setHasBuscado(false);
@@ -1069,7 +1099,7 @@ const VentasPorNegocio = () => {
                   {negocios
                     .filter((n) => n.estado === 1 && n.esCuentaCorriente)
                     .map((n) => (
-                      <Option key={n.id} value={n.id}>
+                      <Option key={n.id} value={n.id} label={n.nombre}>
                         {n.nombre}
                       </Option>
                     ))}
@@ -1102,7 +1132,7 @@ const VentasPorNegocio = () => {
               )}
               <Button
                 icon={<CreditCardOutlined />}
-                onClick={() => setIsAddPagoOpen(true)}
+                onClick={openAgregarPagoModal}
                 type="primary"
               >
                 Agregar Pago
@@ -1125,20 +1155,6 @@ const VentasPorNegocio = () => {
           )}
         </div>
       </div>
-
-      {/* Botón de filtro para móviles */}
-      {isMobile && (
-        <div className="flex justify-between items-center mb-2">
-          <h3 className="text-lg font-medium">Ventas por Negocio</h3>
-          <Button
-            icon={<MenuOutlined />}
-            onClick={() => setFilterDrawerVisible(true)}
-            type="primary"
-          >
-            Acciones
-          </Button>
-        </div>
-      )}
 
       {/* Resumen de Saldo */}
       {hasBuscado && negocioSeleccionado && (
@@ -1242,7 +1258,11 @@ const VentasPorNegocio = () => {
         <Modal
           title="Editar"
           open={isEditModalOpen}
-          onCancel={() => setIsEditModalOpen(false)}
+          onCancel={() => {
+            setIsEditModalOpen(false);
+            setEditMonto(null);
+            setEditMetodoPago(null);
+          }}
           onOk={guardarEdicion}
           okText="Guardar"
           width={isMobile ? "95%" : isTablet ? "80%" : 500}
@@ -1259,25 +1279,50 @@ const VentasPorNegocio = () => {
               <strong>Fecha:</strong>{" "}
               {dayjs(editingRecord?.fechaCreacion).format("DD/MM/YYYY")}
             </p>
-            <InputNumber
-              value={editMonto ?? 0}
-              onChange={(value) => setEditMonto(value)}
-              formatter={(value) =>
-                `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
-              }
-              parser={(value) => value?.replace(/\$\s?|(\.)/g, "")}
-              min={0}
-              style={{ width: "100%" }}
-            />
+            <div>
+              <label>Monto</label>
+              <InputNumber
+                value={editMonto ?? 0}
+                onChange={(value) => setEditMonto(value)}
+                formatter={(value) =>
+                  `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+                }
+                parser={(value) => value?.replace(/\$\s?|(\.)/g, "")}
+                min={0}
+                style={{ width: "100%" }}
+              />
+            </div>
+            {editingRecord?.tipo === "Entrega" && (
+              <div>
+                <label>Método de Pago</label>
+                <Select
+                  value={editMetodoPago}
+                  onChange={setEditMetodoPago}
+                  placeholder="Seleccionar método de pago"
+                  style={{ width: "100%" }}
+                  allowClear
+                >
+                  {metodosPago.map((metodo) => (
+                    <Select.Option key={metodo.id} value={metodo.id}>
+                      {metodo.nombre}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </div>
+            )}
           </div>
         </Modal>
       ) : (
         <Drawer
-          title="Editar monto de venta"
+          title={editingRecord?.tipo === "Entrega" ? "Editar entrega" : "Editar monto de venta"}
           open={isEditModalOpen}
-          onClose={() => setIsEditModalOpen(false)}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setEditMonto(null);
+            setEditMetodoPago(null);
+          }}
           placement="bottom"
-          height="50%"
+          height={editingRecord?.tipo === "Entrega" ? "60%" : "50%"}
           extra={
             <Button type="primary" onClick={guardarEdicion}>
               Guardar
@@ -1286,22 +1331,47 @@ const VentasPorNegocio = () => {
         >
           <div className="space-y-4">
             <p>
-              <strong>Nro Venta:</strong> {editingRecord?.nroVenta}
+              <strong>Numero:</strong>{" "}
+              {editingRecord?.nroVenta ||
+                editingRecord?.nroEntrega ||
+                editingRecord?.nroNotaCredito ||
+                "-"}
             </p>
             <p>
               <strong>Fecha:</strong>{" "}
               {dayjs(editingRecord?.fechaCreacion).format("DD/MM/YYYY")}
             </p>
-            <InputNumber
-              value={editMonto ?? 0}
-              onChange={(value) => setEditMonto(value)}
-              formatter={(value) =>
-                `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
-              }
-              parser={(value) => value?.replace(/\$\s?|(\.)/g, "")}
-              min={0}
-              style={{ width: "100%" }}
-            />
+            <div>
+              <label>Monto</label>
+              <InputNumber
+                value={editMonto ?? 0}
+                onChange={(value) => setEditMonto(value)}
+                formatter={(value) =>
+                  `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+                }
+                parser={(value) => value?.replace(/\$\s?|(\.)/g, "")}
+                min={0}
+                style={{ width: "100%" }}
+              />
+            </div>
+            {editingRecord?.tipo === "Entrega" && (
+              <div>
+                <label>Método de Pago</label>
+                <Select
+                  value={editMetodoPago}
+                  onChange={setEditMetodoPago}
+                  placeholder="Seleccionar método de pago"
+                  style={{ width: "100%" }}
+                  allowClear
+                >
+                  {metodosPago.map((metodo) => (
+                    <Select.Option key={metodo.id} value={metodo.id}>
+                      {metodo.nombre}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </div>
+            )}
           </div>
         </Drawer>
       )}
@@ -1309,7 +1379,11 @@ const VentasPorNegocio = () => {
       <Modal
         title="Agregar Entrega"
         open={isAddPagoOpen}
-        onCancel={() => setIsAddPagoOpen(false)}
+        onCancel={() => {
+          setIsAddPagoOpen(false);
+          setNuevoMonto(null);
+          setNuevoMetodoPago(null);
+        }}
         onOk={async () => {
           if (esCheque) {
             try {
@@ -1589,7 +1663,7 @@ const VentasPorNegocio = () => {
             <Button
               icon={<CreditCardOutlined />}
               onClick={() => {
-                setIsAddPagoOpen(true);
+                openAgregarPagoModal();
                 setFilterDrawerVisible(false);
               }}
               type="primary"

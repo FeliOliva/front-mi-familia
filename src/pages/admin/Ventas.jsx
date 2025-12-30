@@ -85,6 +85,15 @@ const getStepByUnidad = (u) => {
   return 1; // UNIDAD, CAJON, BOLSA
 };
 
+// Función para normalizar texto sin acentos
+const normalizarTexto = (texto) => {
+  if (!texto) return "";
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+};
+
 // Hook personalizado para detectar si la pantalla es móvil
 const useIsMobile = () => {
   const [isMobile, setIsMobile] = useState(false);
@@ -152,6 +161,12 @@ const generarPDF = async (venta) => {
     doc.text(String(venta.negocio?.nombre ?? venta.negocioNombre), 6, y);
     y += 4.2;
     doc.setFont("helvetica", "normal");
+    // Agregar dirección del negocio si existe
+    if (venta.negocio?.direccion) {
+      doc.setFontSize(8);
+      doc.text(String(venta.negocio.direccion), 6, y);
+      y += 4.2;
+    }
   }
 
   // Línea
@@ -371,13 +386,17 @@ const Ventas = () => {
             );
             return {
               ...venta,
-              negocioNombre: negocio ? negocio.nombre : "Desconocido",
+              // Preservar la información del negocio del backend (incluye dirección)
+              negocio: venta.negocio || (negocio ? { nombre: negocio.nombre, direccion: negocio.direccion } : undefined),
+              negocioNombre: negocio ? negocio.nombre : (venta.negocio?.nombre || "Desconocido"),
               cajaNombre: caja ? caja.nombre : "No especificada",
             };
           } catch (error) {
             return {
               ...venta,
-              negocioNombre: "Desconocido",
+              // Preservar la información del negocio del backend si está disponible
+              negocio: venta.negocio,
+              negocioNombre: venta.negocio?.nombre || "Desconocido",
               cajaNombre: "No especificada",
             };
           }
@@ -406,30 +425,31 @@ const Ventas = () => {
   const buscarProductos = () => {
     if (!productosCargados) return;
 
-    const termino = productoBuscado.trim().toLowerCase();
+    const termino = productoBuscado.trim();
+    const terminoNormalizado = normalizarTexto(termino);
 
     // ⚡ NO mostrar nada si no hay texto
-    if (termino === "") {
+    if (terminoNormalizado === "") {
       setProductosDisponibles([]);
       setShowProductList(false);
       return;
     }
 
     // no buscar hasta tener al menos 2 letras
-    if (termino.length < 2) {
+    if (terminoNormalizado.length < 2) {
       setProductosDisponibles([]);
       setShowProductList(false);
       return;
     }
 
     // Búsqueda más flexible: dividir en palabras y buscar que todas estén presentes
-    const palabras = termino.split(/\s+/).filter(p => p.length > 0);
+    const palabras = terminoNormalizado.split(/\s+/).filter(p => p.length > 0);
 
     const filtrados = todosLosProductos
       .filter((p) => {
-        const nombreLower = p.nombre.toLowerCase();
-        // Verificar que todas las palabras del término estén en el nombre
-        return palabras.every(palabra => nombreLower.includes(palabra));
+        const nombreNormalizado = normalizarTexto(p.nombre);
+        // Verificar que todas las palabras del término estén en el nombre (sin acentos)
+        return palabras.every(palabra => nombreNormalizado.includes(palabra));
       })
       .slice(0, 50); // máximo 50 mostrados
 

@@ -65,6 +65,15 @@ const getStepByUnidad = (u) => {
   return 0.5;
 };
 
+// Función para normalizar texto sin acentos
+const normalizarTexto = (texto) => {
+  if (!texto) return "";
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+};
+
 // Hook para detectar móvil
 const useIsMobile = () => {
   const [isMobile, setIsMobile] = useState(false);
@@ -284,7 +293,8 @@ const Pedidos = () => {
   const buscarProductos = () => {
     if (!productosCargados) return;
 
-    const termino = productoBuscado.trim().toLowerCase();
+    const termino = productoBuscado.trim();
+    const terminoNormalizado = normalizarTexto(termino);
 
     let filtrados = [...todosLosProductos];
 
@@ -301,11 +311,12 @@ const Pedidos = () => {
       filtrados = filtrados.filter((p) => p._tipoUnidadId === unidadId);
     }
 
-    // Filtrar por término de búsqueda
-    if (termino.length >= 2) {
-      filtrados = filtrados.filter((p) =>
-        p.nombre.toLowerCase().includes(termino)
-      );
+    // Filtrar por término de búsqueda (sin acentos)
+    if (terminoNormalizado.length >= 2) {
+      filtrados = filtrados.filter((p) => {
+        const nombreNormalizado = normalizarTexto(p.nombre);
+        return nombreNormalizado.includes(terminoNormalizado);
+      });
     }
 
     setProductosDisponibles(filtrados.slice(0, 50));

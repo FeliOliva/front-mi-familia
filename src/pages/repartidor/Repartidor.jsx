@@ -16,6 +16,14 @@ const Repartidor = () => {
   const [newNotifications, setNewNotifications] = useState(0);
   const [activeTab, setActiveTab] = useState("entregas");
   const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  
+  // Estados para el swipe
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
+  
+  // Distancia mínima para considerar un swipe
+  const minSwipeDistance = 50;
 
   useEffect(() => {
     const getUserInfo = () => {
@@ -34,14 +42,47 @@ const Repartidor = () => {
       setNewNotifications((prev) => prev + 1);
     };
 
+    const checkIsMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
     getUserInfo();
+    checkIsMobile();
 
     window.addEventListener("nuevaVenta", handleNuevaVenta);
+    window.addEventListener("resize", checkIsMobile);
 
     return () => {
       window.removeEventListener("nuevaVenta", handleNuevaVenta);
+      window.removeEventListener("resize", checkIsMobile);
     };
   }, []);
+
+  // Funciones para manejar el swipe
+  const onTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe && activeTab === "entregas") {
+      setActiveTab("resumenes");
+    }
+    if (isRightSwipe && activeTab === "resumenes") {
+      setActiveTab("entregas");
+      resetNotifications();
+    }
+  };
 
   // Función para resetear las notificaciones
   const resetNotifications = () => {
@@ -132,7 +173,17 @@ const Repartidor = () => {
         </nav>
       </header>
 
-      <main className="max-w-4xl mx-auto py-4 px-2">
+      <main 
+        className="max-w-4xl mx-auto py-4 px-2"
+        onTouchStart={isMobile ? onTouchStart : undefined}
+        onTouchMove={isMobile ? onTouchMove : undefined}
+        onTouchEnd={isMobile ? onTouchEnd : undefined}
+        style={{ 
+          touchAction: isMobile ? 'pan-y' : 'auto',
+          userSelect: 'none',
+          WebkitUserSelect: 'none'
+        }}
+      >
         {activeTab === "entregas" ? <Entregas /> : <Resumenes />}
       </main>
     </div>
