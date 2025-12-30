@@ -33,6 +33,7 @@ import {
   FilterOutlined,
   SolutionOutlined,
   ExclamationCircleOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 import { api } from "../../services/api";
 import Loading from "../../components/Loading";
@@ -79,6 +80,13 @@ const Entregas = () => {
 
   const [detalleMetodo, setDetalleMetodo] = useState(null);
   const [ventasEspeciales, setVentasEspeciales] = useState([]);
+
+  // Estados para editar entrega
+  const [editEntregaModalVisible, setEditEntregaModalVisible] = useState(false);
+  const [entregaEditando, setEntregaEditando] = useState(null);
+  const [editMontoEntrega, setEditMontoEntrega] = useState(null);
+  const [editMetodoPagoEntrega, setEditMetodoPagoEntrega] = useState(null);
+  const [editEntregaLoading, setEditEntregaLoading] = useState(false);
 
   const [ccEntregadas, setCcEntregadas] = useState(() => {
     try {
@@ -547,6 +555,7 @@ const Entregas = () => {
           id: e.id,
           monto: e.monto,
           metodo: e.metodopago?.nombre || "SIN MÉTODO",
+          metodoId: e.metodoPagoId,
           fecha: e.fechaCreacion,
         }))
       );
@@ -555,6 +564,60 @@ const Entregas = () => {
       setPagosVenta([]);
     } finally {
       setLoadingPagos(false);
+    }
+  };
+
+  // Abrir modal de edición de entrega
+  const handleEditarEntrega = (pago) => {
+    setEntregaEditando(pago);
+    setEditMontoEntrega(pago.monto);
+    setEditMetodoPagoEntrega(pago.metodoId || null);
+    setEditEntregaModalVisible(true);
+  };
+
+  // Guardar edición de entrega
+  const handleGuardarEdicionEntrega = async () => {
+    if (!entregaEditando || !editMontoEntrega) {
+      message.error("El monto es requerido");
+      return;
+    }
+
+    setEditEntregaLoading(true);
+    try {
+      await api(`api/entregas/${entregaEditando.id}`, "PUT", {
+        monto: editMontoEntrega,
+        metodoPagoId: editMetodoPagoEntrega || null,
+      });
+
+      message.success("Entrega actualizada correctamente");
+
+      // Actualizar la lista de pagos
+      const data = await api(`api/entregas/venta/${selectedEntrega.id}`, "GET");
+      setPagosVenta(
+        (data || []).map((e) => ({
+          id: e.id,
+          monto: e.monto,
+          metodo: e.metodopago?.nombre || "SIN MÉTODO",
+          metodoId: e.metodoPagoId,
+          fecha: e.fechaCreacion,
+        }))
+      );
+
+      // Refrescar totales de caja
+      await refrescarTotalesCaja();
+
+      // Cerrar modal
+      setEditEntregaModalVisible(false);
+      setEntregaEditando(null);
+      setEditMontoEntrega(null);
+      setEditMetodoPagoEntrega(null);
+    } catch (error) {
+      console.error("Error al actualizar la entrega:", error);
+      message.error(
+        error.message || "Error al actualizar la entrega. Verifique que no esté en un cierre de caja cerrado."
+      );
+    } finally {
+      setEditEntregaLoading(false);
     }
   };
 
@@ -1126,7 +1189,20 @@ const Entregas = () => {
               <List
                 dataSource={pagosVenta}
                 renderItem={(pago) => (
-                  <List.Item key={pago.id}>
+                  <List.Item
+                    key={pago.id}
+                    actions={[
+                      <Button
+                        key="edit"
+                        type="link"
+                        icon={<EditOutlined />}
+                        onClick={() => handleEditarEntrega(pago)}
+                        size="small"
+                      >
+                        Editar
+                      </Button>,
+                    ]}
+                  >
                     <div className="flex w-full justify-between">
                       <div>
                         <div className="font-medium">{pago.metodo}</div>
@@ -1441,6 +1517,64 @@ const Entregas = () => {
           </ul>
         ) : (
           <p>No hay detalles para este método.</p>
+        )}
+      </Modal>
+
+      {/* Modal de edición de entrega */}
+      <Modal
+        title="Editar Entrega"
+        open={editEntregaModalVisible}
+        onOk={handleGuardarEdicionEntrega}
+        onCancel={() => {
+          setEditEntregaModalVisible(false);
+          setEntregaEditando(null);
+          setEditMontoEntrega(null);
+          setEditMetodoPagoEntrega(null);
+        }}
+        confirmLoading={editEntregaLoading}
+        okText="Guardar"
+        cancelText="Cancelar"
+      >
+        {entregaEditando && (
+          <div className="space-y-4">
+            <div>
+              <p>
+                <strong>Fecha:</strong>{" "}
+                {entregaEditando.fecha
+                  ? new Date(entregaEditando.fecha).toLocaleString("es-AR")
+                  : "-"}
+              </p>
+            </div>
+            <div>
+              <label>Monto</label>
+              <InputNumber
+                value={editMontoEntrega ?? 0}
+                onChange={(value) => setEditMontoEntrega(value)}
+                formatter={(value) =>
+                  `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+                }
+                parser={(value) => value?.replace(/\$\s?|(\.)/g, "")}
+                min={0}
+                style={{ width: "100%" }}
+              />
+            </div>
+            <div>
+              <label>Método de Pago</label>
+              <Select
+                value={editMetodoPagoEntrega}
+                onChange={setEditMetodoPagoEntrega}
+                placeholder="Seleccionar método de pago"
+                style={{ width: "100%" }}
+                allowClear
+              >
+                {metodoPagos.map((metodo) => (
+                  <Select.Option key={metodo.id} value={metodo.id}>
+                    {metodo.nombre}
+                  </Select.Option>
+                ))}
+              </Select>
+            </div>
+          </div>
         )}
       </Modal>
     </div>
