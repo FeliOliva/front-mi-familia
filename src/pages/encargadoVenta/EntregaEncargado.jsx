@@ -56,6 +56,7 @@ const EntregasEncargado = () => {
   const [cierreLoading, setCierreLoading] = useState(false);
   const [cierreNotification, setCierreNotification] = useState(null);
   const [totalesEntregas, setTotalesEntregas] = useState([]);
+  const [gastosDelDia, setGastosDelDia] = useState([]);
 
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [orden, setOrden] = useState("desc");
@@ -211,11 +212,15 @@ const EntregasEncargado = () => {
   const handleAbrirCierreCaja = async () => {
     setCierreLoading(true);
     const cajaId = localStorage.getItem("cajaId");
+    const usuarioId = localStorage.getItem("usuarioId");
 
     try {
-      const [caja, totales] = await Promise.all([
+      const [caja, totales, gastos] = await Promise.all([
         api(`api/caja/${cajaId}`, "GET"),
         api("api/entregas/totales-dia-caja", "GET"),
+        usuarioId
+          ? api(`api/gastos/dia?usuarioId=${usuarioId}&cajaId=${cajaId}`, "GET")
+          : Promise.resolve([]),
       ]);
 
       const totalSistema =
@@ -223,6 +228,7 @@ const EntregasEncargado = () => {
           ?.totalEntregado || 0;
       setCajaInfo({ ...caja, totalSistema });
       setTotalesEntregas(totales);
+      setGastosDelDia(gastos || []);
       setModalCierreVisible(true);
     } catch (err) {
       setCierreNotification({
@@ -247,6 +253,11 @@ const EntregasEncargado = () => {
 
       const totalEntregado = Number(resumenCaja.totalEntregado || 0);
       const totalEfectivo = Number(resumenCaja.totalEfectivo || 0);
+      const totalGastos = gastosDelDia.reduce(
+        (acc, g) => acc + (g.monto || 0),
+        0
+      );
+      const efectivoNeto = Math.max(0, totalEfectivo - totalGastos);
       const totalCuentaCorriente = Number(
         resumenCaja.totalCuentaCorriente || 0
       );
@@ -261,7 +272,9 @@ const EntregasEncargado = () => {
         totalVentas,
         totalPagado,
         totalCuentaCorriente,
-        totalEfectivo,
+        totalEfectivo: efectivoNeto,
+        totalEfectivoBruto: totalEfectivo,
+        totalGastos,
         ingresoLimpio: 0, // el encargado tampoco cuenta efectivo
         estado: 0, // pendiente
         metodoPago: metodosPago.map((m) => ({
@@ -378,7 +391,7 @@ const EntregasEncargado = () => {
         );
       case 3:
         return (
-          <Tag icon={<CalendarOutlined />} color="processing">
+          <Tag icon={<CalendarOutlined />} color="warning">
             PAGO OTRO DÍA
           </Tag>
         );
@@ -962,7 +975,12 @@ const EntregasEncargado = () => {
                 key={entrega.id}
                 className="shadow-md rounded-lg border-l-4 hover:shadow-lg transition-shadow"
                 style={{
-                  borderLeftColor: entrega.metodo_pago ? "#10b981" : "#f59e0b",
+                  borderLeftColor: 
+                    entrega.estado === 3 
+                      ? "#f59e0b" // Mismo color que pendientes
+                      : entrega.metodo_pago 
+                        ? "#10b981" 
+                        : "#f59e0b",
                 }}
               >
                 <div className="flex flex-col">
@@ -1462,6 +1480,44 @@ const EntregasEncargado = () => {
               <strong>Total sistema (entregado):</strong>{" "}
               {formatMoney(cajaInfo.totalSistema || 0)}
             </p>
+
+            <Divider>Gastos del día</Divider>
+            {gastosDelDia.length === 0 ? (
+              <p className="text-sm text-gray-500">Sin gastos registrados.</p>
+            ) : (
+              <ul style={{ paddingLeft: 0, listStyle: "none" }}>
+                {gastosDelDia.map((g) => (
+                  <li
+                    key={g.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span className="capitalize">{g.motivo}</span>
+                    <span style={{ fontWeight: "bold", color: "#dc2626" }}>
+                      -{formatMoney(g.monto)}
+                    </span>
+                  </li>
+                ))}
+                <li
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginTop: 6,
+                    fontWeight: "bold",
+                  }}
+                >
+                  <span>Total gastos</span>
+                  <span style={{ color: "#dc2626" }}>
+                    -{formatMoney(
+                      gastosDelDia.reduce((acc, g) => acc + (g.monto || 0), 0)
+                    )}
+                  </span>
+                </li>
+              </ul>
+            )}
 
             <Divider>Detalle por método de pago</Divider>
             <ul style={{ paddingLeft: 0, listStyle: "none" }}>

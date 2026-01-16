@@ -73,13 +73,21 @@ const Entregas = () => {
   const [cierreLoading, setCierreLoading] = useState(false);
   const [cierreNotification, setCierreNotification] = useState(null);
   const [totalesEntregas, setTotalesEntregas] = useState([]);
+  const [gastosDelDia, setGastosDelDia] = useState([]);
   const [cierrePendiente, setCierrePendiente] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const [pagosVenta, setPagosVenta] = useState([]);
   const [loadingPagos, setLoadingPagos] = useState(false);
 
   const [detalleMetodo, setDetalleMetodo] = useState(null);
   const [ventasEspeciales, setVentasEspeciales] = useState([]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Estados para editar entrega
   const [editEntregaModalVisible, setEditEntregaModalVisible] = useState(false);
@@ -342,16 +350,21 @@ const Entregas = () => {
   const handleAbrirCierreCaja = async () => {
     setCierreLoading(true);
     const cajaId = localStorage.getItem("cajaId");
+    const usuarioId = localStorage.getItem("usuarioId");
     try {
-      const [caja, totales] = await Promise.all([
+      const [caja, totales, gastos] = await Promise.all([
         api(`api/caja/${cajaId}`, "GET"),
         api("api/entregas/totales-dia-caja", "GET"),
+        usuarioId
+          ? api(`api/gastos/dia?usuarioId=${usuarioId}&cajaId=${cajaId}`, "GET")
+          : Promise.resolve([]),
       ]);
       const totalSistema =
         totales.find((t) => t.cajaId === Number(cajaId))?.totalEntregado || 0;
 
       setCajaInfo({ ...caja, totalSistema });
       setTotalesEntregas(totales); // 👈 necesario para el cierre
+      setGastosDelDia(gastos || []);
       setModalCierreVisible(true);
     } catch (err) {
       setCierreNotification({
@@ -376,6 +389,11 @@ const Entregas = () => {
 
       const totalEntregado = Number(resumenCaja.totalEntregado || 0);
       const totalEfectivo = Number(resumenCaja.totalEfectivo || 0);
+      const totalGastos = gastosDelDia.reduce(
+        (acc, g) => acc + (g.monto || 0),
+        0
+      );
+      const efectivoNeto = Math.max(0, totalEfectivo - totalGastos);
       const totalCuentaCorriente = Number(
         resumenCaja.totalCuentaCorriente || 0
       );
@@ -390,7 +408,9 @@ const Entregas = () => {
         totalVentas,
         totalPagado,
         totalCuentaCorriente,
-        totalEfectivo,
+        totalEfectivo: efectivoNeto,
+        totalEfectivoBruto: totalEfectivo,
+        totalGastos,
         ingresoLimpio: 0, // el repartidor no cuenta efectivo
         estado: 0, // cierre preliminar
         metodoPago: metodosPago.map((m) => ({
@@ -582,10 +602,16 @@ const Entregas = () => {
       return;
     }
 
+    const montoNum = parseFloat(editMontoEntrega);
+    if (isNaN(montoNum) || montoNum <= 0) {
+      message.error("El monto debe ser un número válido mayor a 0");
+      return;
+    }
+
     setEditEntregaLoading(true);
     try {
       await api(`api/entregas/${entregaEditando.id}`, "PUT", {
-        monto: editMontoEntrega,
+        monto: montoNum,
         metodoPagoId: editMetodoPagoEntrega || null,
       });
 
@@ -829,7 +855,7 @@ const Entregas = () => {
         );
       case 3:
         return (
-          <Tag icon={<CalendarOutlined />} color="processing">
+          <Tag icon={<CalendarOutlined />} color="warning">
             PAGO OTRO DÍA
           </Tag>
         );
@@ -955,7 +981,12 @@ const Entregas = () => {
                 key={entrega.id}
                 className="shadow-md rounded-lg border-l-4 hover:shadow-lg transition-shadow"
                 style={{
-                  borderLeftColor: entrega.metodo_pago ? "#10b981" : "#f59e0b",
+                  borderLeftColor: 
+                    entrega.estado === 3 
+                      ? "#f59e0b" // Mismo color que pendientes
+                      : entrega.metodo_pago 
+                        ? "#10b981" 
+                        : "#f59e0b",
                 }}
               >
                 {/* Mejora del layout para mayor responsividad */}
@@ -1430,6 +1461,9 @@ const Entregas = () => {
         title="Cierre de Caja"
         open={modalCierreVisible}
         onCancel={() => setModalCierreVisible(false)}
+        centered
+        width={isMobile ? "95%" : 600}
+        bodyStyle={{ maxHeight: "70vh", overflowY: "auto" }}
         footer={[
           <Button key="cancel" onClick={() => setModalCierreVisible(false)}>
             Cancelar
@@ -1446,14 +1480,53 @@ const Entregas = () => {
         ]}
       >
         {cajaInfo ? (
-          <div>
-            <p>
-              <strong>Caja:</strong> {cajaInfo.nombre}
-            </p>
-            <p>
-              <strong>Total sistema:</strong> $
-              {cajaInfo.totalSistema?.toLocaleString() || 0}
-            </p>
+          <div className="space-y-3">
+            <div className="flex flex-col gap-1 text-sm">
+              <div>
+                <strong>Caja:</strong> {cajaInfo.nombre}
+              </div>
+              <div>
+                <strong>Total sistema:</strong>{" "}
+                ${cajaInfo.totalSistema?.toLocaleString() || 0}
+              </div>
+            </div>
+            <Divider>Gastos del día</Divider>
+            {gastosDelDia.length === 0 ? (
+              <p className="text-sm text-gray-500">Sin gastos registrados.</p>
+            ) : (
+              <ul style={{ paddingLeft: 0, listStyle: "none" }}>
+                {gastosDelDia.map((g) => (
+                  <li
+                    key={g.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span className="capitalize">{g.motivo}</span>
+                    <span style={{ fontWeight: "bold", color: "#dc2626" }}>
+                      -{formatMoney(g.monto)}
+                    </span>
+                  </li>
+                ))}
+                <li
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginTop: 6,
+                    fontWeight: "bold",
+                  }}
+                >
+                  <span>Total gastos</span>
+                  <span style={{ color: "#dc2626" }}>
+                    -{formatMoney(
+                      gastosDelDia.reduce((acc, g) => acc + (g.monto || 0), 0)
+                    )}
+                  </span>
+                </li>
+              </ul>
+            )}
             {/* Detalle de métodos de pago */}
             <Divider>Detalle por método de pago</Divider>
             <ul style={{ paddingLeft: 0, listStyle: "none" }}>
@@ -1547,14 +1620,12 @@ const Entregas = () => {
             </div>
             <div>
               <label>Monto</label>
-              <InputNumber
-                value={editMontoEntrega ?? 0}
-                onChange={(value) => setEditMontoEntrega(value)}
-                formatter={(value) =>
-                  `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
-                }
-                parser={(value) => value?.replace(/\$\s?|(\.)/g, "")}
-                min={0}
+              <Input
+                value={editMontoEntrega ?? ""}
+                onChange={(e) => setEditMontoEntrega(e.target.value)}
+                type="number"
+                min="0"
+                step="0.01"
                 style={{ width: "100%" }}
               />
             </div>

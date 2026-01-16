@@ -167,6 +167,16 @@ const generarPDF = async (venta) => {
       doc.text(String(venta.negocio.direccion), 6, y);
       y += 4.2;
     }
+    // Observación en negrita debajo de la dirección
+    if (venta.observacion) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      const obsTexto = String(venta.observacion);
+      const obsLineas = doc.splitTextToSize(obsTexto, 70);
+      doc.text(obsLineas, 6, y);
+      y += obsLineas.length * 4.2;
+      doc.setFont("helvetica", "normal");
+    }
   }
 
   // Línea
@@ -245,6 +255,7 @@ const Ventas = () => {
   const [selectedCaja, setSelectedCaja] = useState(null);
   const [loadingCajas, setLoadingCajas] = useState(false);
   const [filtroCaja, setFiltroCaja] = useState("todas");
+  const [observacion, setObservacion] = useState("");
 
   // Búsqueda de ventas por nroVenta
   const [busquedaVenta, setBusquedaVenta] = useState("");
@@ -652,6 +663,7 @@ const Ventas = () => {
         negocioId: parseInt(selectedNegocio),
         cajaId: parseInt(selectedCaja),
         detalles,
+        observacion: observacion?.trim().toUpperCase() || null,
       };
 
       if (ventaEditando) {
@@ -695,6 +707,7 @@ const Ventas = () => {
 
       setSelectedNegocio(venta.negocioId || venta.negocio?.id);
       setSelectedCaja(venta.cajaId || null);
+      setObservacion(venta.observacion || "");
 
       const detalles = venta.detalles || [];
 
@@ -742,6 +755,12 @@ const Ventas = () => {
         <p>
           <strong>Negocio:</strong> {venta.negocioNombre}
         </p>
+        <p>
+          <strong>Dirección:</strong> {venta.negocio?.direccion || "-"}
+        </p>
+        {venta.observacion && (
+          <p className="font-bold">{venta.observacion}</p>
+        )}
         <p>
           <strong>Caja:</strong> {venta.cajaNombre || "No especificada"}
         </p>
@@ -1062,6 +1081,7 @@ const Ventas = () => {
     }
     setModalVisible(false);
     setVentaEditando(null);
+    setObservacion("");
   };
   const ventasFiltradas =
     filtroCaja === "todas"
@@ -1080,6 +1100,7 @@ const Ventas = () => {
             type="primary"
             onClick={() => {
               setModalVisible(true);
+              setObservacion("");
               // si NO es edición de venta, carga el borrador si existe
               if (!ventaEditando && productosSeleccionados.length === 0) {
                 const draft = readCartDraft();
@@ -1259,6 +1280,16 @@ const Ventas = () => {
                         </Option>
                       ))}
                   </Select>
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item label="Observación (opcional)" style={{ marginBottom: 0 }}>
+                  <Input.TextArea
+                    placeholder="Escribí una observación"
+                    value={observacion}
+                    onChange={(e) => setObservacion(e.target.value)}
+                    autoSize={{ minRows: 2, maxRows: 4 }}
+                  />
                 </Form.Item>
               </Col>
             </Row>

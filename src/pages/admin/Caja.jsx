@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../../services/api";
 import { PrinterOutlined } from "@ant-design/icons";
-import { Tooltip, Modal, Button, Input } from "antd";
+import { Tooltip, Modal, Button, Input, Pagination } from "antd";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -10,6 +10,8 @@ const CierreCajaGeneral = () => {
   const [montosContados, setMontosContados] = useState({});
   const [loading, setLoading] = useState(false);
   const [totalesEntregas, setTotalesEntregas] = useState([]);
+  const [totalesGastos, setTotalesGastos] = useState([]);
+  const [gastosDelDia, setGastosDelDia] = useState([]);
   const [cierres, setCierres] = useState([]);
   const [notification, setNotification] = useState(null);
   const [detalleMetodos, setDetalleMetodos] = useState([]);
@@ -19,12 +21,23 @@ const CierreCajaGeneral = () => {
   const [modalEditarVisible, setModalEditarVisible] = useState(false);
   const [cierreEditando, setCierreEditando] = useState(null);
   const [montoEditando, setMontoEditando] = useState("");
+  const [paginaActual, setPaginaActual] = useState(1);
+  const itemsPorPagina = 6;
 
   useEffect(() => {
     api("api/caja", "GET").then((data) => setCajas(data));
     api("api/entregas/totales-dia-caja", "GET").then((data) =>
       setTotalesEntregas(data)
     );
+    api("api/gastos/totales-dia-caja", "GET").then((data) =>
+      setTotalesGastos(data)
+    );
+    const usuarioId = localStorage.getItem("usuarioId");
+    if (usuarioId) {
+      api(`api/gastos/dia?usuarioId=${usuarioId}`, "GET").then((data) =>
+        setGastosDelDia(data || [])
+      );
+    }
     api("api/cierres-caja", "GET").then((data) => setCierres(data));
   }, []);
   // NUEVA VERSIÓN
@@ -92,6 +105,7 @@ const CierreCajaGeneral = () => {
 
       const data = await api("api/cierres-caja", "GET");
       setCierres(data);
+      setPaginaActual(1); // Volver a la primera página después de editar
       cerrarModalEditar();
     } catch (error) {
       console.error("Error actualizando monto contado:", error);
@@ -120,6 +134,12 @@ const CierreCajaGeneral = () => {
     const encontrado = totalesEntregas.find((t) => t.cajaId === cajaId);
     return encontrado ? encontrado.totalCuentaCorriente || 0 : 0;
   };
+  const getTotalGastos = (cajaId) => {
+    const encontrado = totalesGastos.find((t) => t.cajaId === cajaId);
+    return encontrado ? encontrado.totalGastos || 0 : 0;
+  };
+  const getGastosUsuarioPorCaja = (cajaId) =>
+    gastosDelDia.filter((g) => Number(g.cajaId) === Number(cajaId));
   const getMetodosPagoPorCaja = (cajaId) => {
     const encontrado = totalesEntregas.find((t) => t.cajaId === cajaId);
     // soporta ambas formas: metodosPago (futuro) o metodospago (actual)
@@ -131,9 +151,11 @@ const CierreCajaGeneral = () => {
 
     const contado = montosContados[caja.id] || 0;
     const totalSistema = getTotalSistema(caja.id); // totalEntregado del día
-    const efectivo = getTotalEfectivo(caja.id); // totalEfectivo del día
+    const efectivo = getTotalEfectivo(caja.id); // totalEfectivo del día (bruto)
     const totalCC = getTotalCuentaCorriente(caja.id);
-    const diferencia = contado - efectivo; // solo para mostrar en UI
+    const totalGastos = getTotalGastos(caja.id);
+    const efectivoNeto = Math.max(0, efectivo - totalGastos);
+    const diferencia = contado - efectivoNeto; // solo para mostrar en UI
     const metodosPago = getMetodosPagoPorCaja(caja.id);
 
     try {
@@ -149,8 +171,10 @@ const CierreCajaGeneral = () => {
           totalPagado: totalSistema,
           // Total en cuenta corriente que vino de esa caja ese día
           totalCuentaCorriente: totalCC,
-          // Total cobrado en EFECTIVO según entregas
-          totalEfectivo: efectivo,
+          // Total cobrado en EFECTIVO según entregas, descontando gastos
+          totalEfectivo: efectivoNeto,
+          totalEfectivoBruto: efectivo,
+          totalGastos: totalGastos,
           // Efectivo contado físicamente por el admin
           ingresoLimpio: contado,
           // 1 = cierre definitivo
@@ -171,10 +195,13 @@ const CierreCajaGeneral = () => {
       // refrescar
       const nuevosCierres = await api("api/cierres-caja", "GET");
       setCierres(nuevosCierres);
+      setPaginaActual(1); // Volver a la primera página después de crear un nuevo cierre
       const nuevasCajas = await api("api/caja", "GET");
       setCajas(nuevasCajas);
       const nuevosTotales = await api("api/entregas/totales-dia-caja", "GET");
       setTotalesEntregas(nuevosTotales);
+      const nuevosGastos = await api("api/gastos/totales-dia-caja", "GET");
+      setTotalesGastos(nuevosGastos);
 
       setMontosContados((prev) => ({ ...prev, [caja.id]: 0 }));
     } catch (error) {
@@ -286,6 +313,7 @@ const CierreCajaGeneral = () => {
       ["Total Cobrado", `$${(cierre.totalPagado || 0).toLocaleString("es-AR")}`],
       ["Total Cuenta Corriente", `$${(cierre.totalCuentaCorriente || 0).toLocaleString("es-AR")}`],
       ["Total Efectivo (Sistema)", `$${(cierre.totalEfectivo || 0).toLocaleString("es-AR")}`],
+      ["Gastos", `-$${(cierre.totalGastos || 0).toLocaleString("es-AR")}`],
       ["Efectivo Contado", `$${(cierre.ingresoLimpio || 0).toLocaleString("es-AR")}`],
       ["Diferencia", `${diferencia >= 0 ? "+" : ""}$${diferencia.toLocaleString("es-AR")}`],
     ];
@@ -314,7 +342,7 @@ const CierreCajaGeneral = () => {
       alternateRowStyles: { fillColor: [245, 247, 250] },
       didParseCell: (data) => {
         // Colorear la diferencia según sea positiva o negativa
-        if (data.row.index === 5 && data.column.index === 1) {
+        if (data.row.index === 6 && data.column.index === 1) {
           data.cell.styles.textColor = diferencia >= 0 ? [22, 163, 74] : [220, 38, 38];
           data.cell.styles.fontStyle = "bold";
         }
@@ -457,6 +485,28 @@ const CierreCajaGeneral = () => {
 
   const formatCurrency = (value) => `$${value?.toLocaleString() || 0}`;
   const formatDate = (date) => new Date(date).toLocaleString();
+
+  // Ordenar cierres por fecha descendente (más recientes primero) y paginar
+  const cierresOrdenados = useMemo(() => {
+    // Eliminar duplicados por ID antes de ordenar
+    const cierresUnicos = Array.from(
+      new Map(cierres.map((c) => [c.id, c])).values()
+    );
+    return cierresUnicos.sort((a, b) => {
+      const fechaA = new Date(a.fecha);
+      const fechaB = new Date(b.fecha);
+      return fechaB - fechaA; // Orden descendente
+    });
+  }, [cierres]);
+
+  const cierresPaginados = useMemo(() => {
+    const inicio = (paginaActual - 1) * itemsPorPagina;
+    const fin = inicio + itemsPorPagina;
+    return cierresOrdenados.slice(inicio, fin);
+  }, [cierresOrdenados, paginaActual]);
+
+  const totalPaginas = Math.ceil(cierresOrdenados.length / itemsPorPagina);
+
   return (
     <div className="p-4 max-w-7xl mx-auto">
       {/* Notification */}
@@ -501,6 +551,9 @@ const CierreCajaGeneral = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Total Cuenta Corriente
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Gastos del día
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -509,6 +562,7 @@ const CierreCajaGeneral = () => {
                 .map((caja) => {
                   const totales =
                     totalesEntregas.find((t) => t.cajaId === caja.id) || {};
+                  const gastosCaja = getGastosUsuarioPorCaja(caja.id);
                   return (
                     <tr key={caja.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -525,6 +579,22 @@ const CierreCajaGeneral = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {formatCurrency(totales.totalCuentaCorriente || 0)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {gastosCaja.length === 0 ? (
+                          <span className="text-gray-400">Sin gastos</span>
+                        ) : (
+                          <div className="space-y-1">
+                            {gastosCaja.map((g) => (
+                              <div key={g.id} className="flex justify-between gap-2">
+                                <span className="truncate">{g.motivo}</span>
+                                <span className="text-red-600">
+                                  -{formatCurrency(g.monto)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -576,6 +646,26 @@ const CierreCajaGeneral = () => {
                           {formatCurrency(totales.totalCuentaCorriente || 0)}
                         </div>
                       </div>
+                    <div className="col-span-2">
+                      <span className="text-gray-500 block">Gastos del día</span>
+                      {getGastosUsuarioPorCaja(caja.id).length === 0 ? (
+                        <div className="text-gray-400 text-sm">Sin gastos</div>
+                      ) : (
+                        <div className="mt-1 space-y-1">
+                          {getGastosUsuarioPorCaja(caja.id).map((g) => (
+                            <div
+                              key={g.id}
+                              className="flex justify-between text-sm"
+                            >
+                              <span className="truncate">{g.motivo}</span>
+                              <span className="text-red-600">
+                                -{formatCurrency(g.monto)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     </div>
                   </div>
                 </div>
@@ -622,8 +712,18 @@ const CierreCajaGeneral = () => {
                   </Tooltip>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <Tooltip title="Total cobrado en efectivo según el sistema">
+                  <Tooltip title="Total cobrado en efectivo según el sistema (descontado)">
                     <span className="cursor-help">Total Efectivo</span>
+                  </Tooltip>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <Tooltip title="Total efectivo bruto (sin descontar gastos)">
+                    <span className="cursor-help">Efectivo Bruto</span>
+                  </Tooltip>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <Tooltip title="Total de gastos del día (descuenta del efectivo)">
+                    <span className="cursor-help">Gastos</span>
                   </Tooltip>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -649,7 +749,7 @@ const CierreCajaGeneral = () => {
             </thead>
 
             <tbody className="bg-white divide-y divide-gray-200">
-              {cierres.map((cierre) => (
+              {cierresPaginados.map((cierre) => (
                 <tr key={cierre.id}>
                   {/* Columna imprimir */}
                   <td className="px-2 py-4 whitespace-nowrap">
@@ -681,6 +781,10 @@ const CierreCajaGeneral = () => {
                   <td>{formatCurrency(cierre.totalPagado)}</td>
                   <td>{formatCurrency(cierre.totalCuentaCorriente)}</td>
                   <td>{formatCurrency(cierre.totalEfectivo)}</td>
+                  <td>{formatCurrency(cierre.totalEfectivoBruto)}</td>
+                  <td className="text-red-600">
+                    -{formatCurrency(cierre.totalGastos || 0)}
+                  </td>
                   <td>{formatCurrency(cierre.ingresoLimpio)}</td>
                   <td>
                     {formatCurrency(
@@ -725,9 +829,25 @@ const CierreCajaGeneral = () => {
           </table>
         </div>
 
+        {/* Paginación Desktop */}
+        {cierresOrdenados.length > itemsPorPagina && (
+          <div className="hidden lg:flex px-6 py-4 border-t border-gray-200 justify-center">
+            <Pagination
+              current={paginaActual}
+              total={cierresOrdenados.length}
+              pageSize={itemsPorPagina}
+              onChange={(page) => setPaginaActual(page)}
+              showSizeChanger={false}
+              showTotal={(total, range) =>
+                `${range[0]}-${range[1]} de ${total} cierres`
+              }
+            />
+          </div>
+        )}
+
         {/* Vista Mobile */}
         <div className="lg:hidden">
-          {cierres.map((cierre) => {
+          {cierresPaginados.map((cierre) => {
             const diferencia =
               (cierre.ingresoLimpio || 0) - (cierre.totalEfectivo || 0);
 
@@ -795,6 +915,18 @@ const CierreCajaGeneral = () => {
                       </div>
                     </div>
                     <div>
+                      <span className="text-gray-500 block">Efectivo Bruto</span>
+                      <div className="font-medium text-gray-900">
+                        {formatCurrency(cierre.totalEfectivoBruto)}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Gastos</span>
+                      <div className="font-medium text-red-600">
+                        -{formatCurrency(cierre.totalGastos || 0)}
+                      </div>
+                    </div>
+                    <div>
                       <span className="text-gray-500 block">Contado</span>
                       <div className="font-medium text-gray-900">
                         {formatCurrency(cierre.ingresoLimpio)}
@@ -842,6 +974,23 @@ const CierreCajaGeneral = () => {
             );
           })}
         </div>
+
+        {/* Paginación Mobile */}
+        {cierresOrdenados.length > itemsPorPagina && (
+          <div className="lg:hidden px-4 py-4 border-t border-gray-200 flex justify-center">
+            <Pagination
+              current={paginaActual}
+              total={cierresOrdenados.length}
+              pageSize={itemsPorPagina}
+              onChange={(page) => setPaginaActual(page)}
+              showSizeChanger={false}
+              showTotal={(total, range) =>
+                `${range[0]}-${range[1]} de ${total}`
+              }
+              size="small"
+            />
+          </div>
+        )}
       </div>
 
       {/* Modales (fuera de las vistas condicionales para que funcionen en ambas) */}
@@ -890,6 +1039,14 @@ const CierreCajaGeneral = () => {
             : "Métodos de pago"
         }
       >
+        {cierreSeleccionado && (
+          <div className="mb-3 text-sm text-gray-700">
+            <span className="font-semibold">Gastos del cierre:</span>{" "}
+            <span className="text-red-600">
+              -{formatCurrency(cierreSeleccionado.totalGastos || 0)}
+            </span>
+          </div>
+        )}
         {detalleMetodos.length === 0 ? (
           <p className="text-sm text-gray-500">
             No hay métodos de pago registrados para este cierre.

@@ -11,6 +11,7 @@ import {
   ShopOutlined,
   BookOutlined,
   OrderedListOutlined,
+  MoneyCollectOutlined,
 } from "@ant-design/icons";
 import { Layout, Menu, Button, theme, Drawer } from "antd";
 import { Link, Outlet, useLocation } from "react-router-dom";
@@ -59,6 +60,8 @@ const MainLayout = () => {
         return "Resumenes";
       case "/caja":
         return "Cierre de Caja";
+      case "/gastos":
+        return "Gastos";
       case "/entregas-encargado":
         return "EntregaEncargado";
       default:
@@ -116,6 +119,14 @@ const MainLayout = () => {
                 Resúmenes
               </Link>
             </Menu.Item>
+            <Menu.Item key="/gastos" icon={<MoneyCollectOutlined />}>
+              <Link
+                to="/gastos"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Gastos
+              </Link>
+            </Menu.Item>
             <Menu.Item key="/caja" icon={<UserOutlined />}>
               <Link
                 to="/caja"
@@ -169,6 +180,14 @@ const MainLayout = () => {
                 Resúmenes
               </Link>
             </Menu.Item>
+            <Menu.Item key="/gastos" icon={<MoneyCollectOutlined />}>
+              <Link
+                to="/gastos"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Gastos
+              </Link>
+            </Menu.Item>
             {/* <Menu.Item key="/cierre-caja-encargado" icon={<UserOutlined />}>
               <Link
                 to="/cierre-caja"
@@ -180,18 +199,6 @@ const MainLayout = () => {
           </>
         )}
 
-        {isDelivery && (
-          <>
-            <Menu.Item key="/entregas" icon={<ShoppingOutlined />}>
-              <Link
-                to="/entregas"
-                onClick={() => isMobile && setMobileDrawerOpen(false)}
-              >
-                Entregas
-              </Link>
-            </Menu.Item>
-          </>
-        )}
       </Menu>
     );
   };

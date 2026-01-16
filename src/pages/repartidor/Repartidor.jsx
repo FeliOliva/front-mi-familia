@@ -4,10 +4,12 @@ import {
   LogoutOutlined,
   CarOutlined,
   FileTextOutlined,
+  MoneyCollectOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import Entregas from "./Entregas";
 import Resumenes from "../admin/Resumenes";
+import Gastos from "../admin/Gastos";
 import Loading from "../../components/Loading";
 
 const Repartidor = () => {
@@ -16,6 +18,7 @@ const Repartidor = () => {
   const [newNotifications, setNewNotifications] = useState(0);
   const [activeTab, setActiveTab] = useState("entregas");
   const navigate = useNavigate();
+  const tabs = ["entregas", "resumenes", "gastos"];
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   
   // Estados para el swipe
@@ -75,12 +78,23 @@ const Repartidor = () => {
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
 
-    if (isLeftSwipe && activeTab === "entregas") {
-      setActiveTab("resumenes");
+    if (isLeftSwipe) {
+      const currentIndex = tabs.indexOf(activeTab);
+      if (currentIndex < tabs.length - 1) {
+        setActiveTab(tabs[currentIndex + 1]);
+        if (tabs[currentIndex + 1] === "entregas") {
+          resetNotifications();
+        }
+      }
     }
-    if (isRightSwipe && activeTab === "resumenes") {
-      setActiveTab("entregas");
-      resetNotifications();
+    if (isRightSwipe) {
+      const currentIndex = tabs.indexOf(activeTab);
+      if (currentIndex > 0) {
+        setActiveTab(tabs[currentIndex - 1]);
+        if (tabs[currentIndex - 1] === "entregas") {
+          resetNotifications();
+        }
+      }
     }
   };
 
@@ -169,6 +183,17 @@ const Repartidor = () => {
               <FileTextOutlined />
               <span>Resúmenes</span>
             </button>
+            <button
+              onClick={() => setActiveTab("gastos")}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 font-medium transition-all border-b-2 ${
+                activeTab === "gastos"
+                  ? "text-blue-600 border-blue-600 bg-blue-50"
+                  : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              <MoneyCollectOutlined />
+              <span>Gastos</span>
+            </button>
           </div>
         </nav>
       </header>
@@ -184,7 +209,13 @@ const Repartidor = () => {
           WebkitUserSelect: 'none'
         }}
       >
-        {activeTab === "entregas" ? <Entregas /> : <Resumenes />}
+        {activeTab === "entregas" ? (
+          <Entregas />
+        ) : activeTab === "resumenes" ? (
+          <Resumenes />
+        ) : (
+          <Gastos />
+        )}
       </main>
     </div>
   );

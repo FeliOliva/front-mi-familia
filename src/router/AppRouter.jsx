@@ -16,6 +16,7 @@ import Unauthorized from "../pages/Unauthorized";
 import Entregas from "../pages/repartidor/Entregas";
 import MainLayout from "../components/layout/Sidebar"; // Ajusta el path si es necesario
 import Caja from "../pages/admin/Caja";
+import Gastos from "../pages/admin/Gastos";
 // import EntregaEncargado from "../pages/encargadoVenta/EntregaEncargado";
 // import CierreCajaEncargado from "../pages/encargadoVenta/cierreCaja";
 
@@ -64,7 +65,6 @@ const AppRouter = () => {
               // Mobile view para repartidor
               <>
                 <Route path="/repartidor" element={<Repartidor />} />
-                <Route path="/entregas" element={<Entregas />} />
                 <Route path="*" element={<Navigate to="/repartidor" />} />
               </>
             ) : (
@@ -80,6 +80,7 @@ const AppRouter = () => {
                     <Route path="ventas" element={<Ventas />} />
                     <Route path="caja" element={<Caja />} />
                     <Route path="pedidos" element={<Pedidos />} />
+                    <Route path="gastos" element={<Gastos />} />
                   </>
                 )}
 
@@ -94,12 +95,20 @@ const AppRouter = () => {
                       element={<CierreCajaEncargado />}
                     /> */}
                     <Route path="resumenes" element={<Resumenes />} />
+                    <Route path="gastos" element={<Gastos />} />
                     <Route path="*" element={<Navigate to="/ventas" />} />
                   </>
                 )}
 
+                {/* Delivery en vista escritorio (no permitido) */}
+                {isDelivery && !isMobile && (
+                  <>
+                    <Route path="*" element={<Unauthorized />} />
+                  </>
+                )}
+
                 {/* Si no tiene permisos */}
-                {!(isAdmin || isEncargadoVentas) && (
+                {!(isAdmin || isEncargadoVentas || isDelivery) && (
                   <>
                     <Route path="productos" element={<Unauthorized />} />
                     <Route path="negocios" element={<Unauthorized />} />

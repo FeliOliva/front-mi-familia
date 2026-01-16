@@ -265,12 +265,18 @@ const VentasPorNegocio = () => {
       return;
     }
 
+    const montoNum = parseFloat(montoSaldoInicial);
+    if (isNaN(montoNum) || montoNum < 0) {
+      message.error("El monto debe ser un número válido mayor o igual a 0");
+      return;
+    }
+
     setLoadingSaldoInicial(true);
     try {
       if (saldoInicial) {
         // Actualizar existente
         const res = await api(`api/saldos-iniciales/${saldoInicial.id}`, "PUT", {
-          monto: montoSaldoInicial,
+          monto: montoNum,
           descripcion: descripcionSaldoInicial || null,
         });
         setSaldoInicial(res);
@@ -279,7 +285,7 @@ const VentasPorNegocio = () => {
         // Crear nuevo
         const res = await api("api/saldos-iniciales", "POST", {
           negocioId: negocioSeleccionado,
-          monto: montoSaldoInicial,
+          monto: montoNum,
           descripcion: descripcionSaldoInicial || null,
         });
         setSaldoInicial(res);
@@ -362,18 +368,24 @@ const VentasPorNegocio = () => {
   };
   const guardarEdicion = async () => {
     try {
+      const montoNum = parseFloat(editMonto);
+      if (isNaN(montoNum) || montoNum < 0) {
+        message.error("El monto debe ser un número válido mayor o igual a 0");
+        return;
+      }
+
       if (editingRecord.tipo === "Venta") {
         await api(`api/ventas/${editingRecord.id}`, "POST", {
-          total: editMonto,
+          total: montoNum,
         });
       } else if (editingRecord.tipo === "Entrega") {
         await api(`api/entregas/${editingRecord.id}`, "PUT", {
-          monto: editMonto,
+          monto: montoNum,
           metodoPagoId: editMetodoPago,
         });
       } else if (editingRecord.tipo === "Nota de Crédito") {
         await api(`api/notasCredito/${editingRecord.id}`, "PUT", {
-          monto: editMonto,
+          monto: montoNum,
         });
       }
       message.success("Registro actualizado correctamente");
@@ -1281,14 +1293,12 @@ const VentasPorNegocio = () => {
             </p>
             <div>
               <label>Monto</label>
-              <InputNumber
-                value={editMonto ?? 0}
-                onChange={(value) => setEditMonto(value)}
-                formatter={(value) =>
-                  `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
-                }
-                parser={(value) => value?.replace(/\$\s?|(\.)/g, "")}
-                min={0}
+              <Input
+                value={editMonto ?? ""}
+                onChange={(e) => setEditMonto(e.target.value)}
+                type="number"
+                min="0"
+                step="0.01"
                 style={{ width: "100%" }}
               />
             </div>
@@ -1343,14 +1353,12 @@ const VentasPorNegocio = () => {
             </p>
             <div>
               <label>Monto</label>
-              <InputNumber
-                value={editMonto ?? 0}
-                onChange={(value) => setEditMonto(value)}
-                formatter={(value) =>
-                  `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
-                }
-                parser={(value) => value?.replace(/\$\s?|(\.)/g, "")}
-                min={0}
+              <Input
+                value={editMonto ?? ""}
+                onChange={(e) => setEditMonto(e.target.value)}
+                type="number"
+                min="0"
+                step="0.01"
                 style={{ width: "100%" }}
               />
             </div>
@@ -1456,30 +1464,28 @@ const VentasPorNegocio = () => {
         <div className="space-y-4">
           <div>
             <label>Monto</label>
-            <InputNumber
-              value={nuevoMonto}
-              onChange={(raw) => {
-                const value = parseFromInputNumber(raw);
-                if (!Number.isFinite(value)) return;
+            <Input
+              value={nuevoMonto ?? ""}
+              onChange={(e) => {
+                const value = e.target.value;
+                setNuevoMonto(value);
 
                 // Mostrar info si supera el saldo, pero permitir ingresar
-                if (saldoPendiente > 0 && value > saldoPendiente) {
-                  const saldoAFavor = value - saldoPendiente;
+                const montoNum = parseFloat(value);
+                if (!isNaN(montoNum) && saldoPendiente > 0 && montoNum > saldoPendiente) {
+                  const saldoAFavor = montoNum - saldoPendiente;
                   setMontoWarning(
                     `El monto supera la deuda. Generará un saldo a favor de $${saldoAFavor.toLocaleString("es-AR")}`
                   );
                 } else {
                   setMontoWarning("");
                 }
-                setNuevoMonto(value);
               }}
-              stringMode
-              step={0.01}
-              min={0.01}
+              type="number"
+              step="0.01"
+              min="0.01"
               style={{ width: "100%" }}
               placeholder="Monto"
-              formatter={formatMoneyAR}
-              parser={parseFromInputNumber}
             />
             {montoWarning && (
               <div style={{ color: "#1890ff", marginTop: 4, fontSize: 12 }}>
@@ -1604,16 +1610,14 @@ const VentasPorNegocio = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Monto del saldo inicial
             </label>
-            <InputNumber
-              value={montoSaldoInicial}
-              onChange={setMontoSaldoInicial}
-              min={0}
+            <Input
+              value={montoSaldoInicial ?? ""}
+              onChange={(e) => setMontoSaldoInicial(e.target.value)}
+              type="number"
+              min="0"
+              step="0.01"
               style={{ width: "100%" }}
               placeholder="Ej: 150000"
-              formatter={(value) =>
-                `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
-              }
-              parser={(value) => value?.replace(/\$\s?|(\.)/g, "")}
             />
             <p className="text-xs text-gray-500 mt-1">
               Ingresá la deuda que tenía el cliente antes de usar el sistema
