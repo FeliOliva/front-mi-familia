@@ -238,6 +238,39 @@ const CierreCajaGeneral = () => {
     return Object.values(map);
   };
 
+  const agruparPorOrigenYMetodo = (items = []) => {
+    const origenes = {
+      VENTA_DEL_DIA: { nombre: "Ventas del día", metodos: {} },
+      PAGO_CUENTA_CORRIENTE: { nombre: "Pago cuenta corriente", metodos: {} },
+    };
+
+    (items || []).forEach((r) => {
+      if (!r) return;
+      const origen =
+        r.origenCobro === "PAGO_CUENTA_CORRIENTE"
+          ? "PAGO_CUENTA_CORRIENTE"
+          : "VENTA_DEL_DIA";
+      const metodo = r.metodoPago || "SIN MÉTODO";
+      const monto = Number(r.monto || 0);
+
+      if (!origenes[origen].metodos[metodo]) {
+        origenes[origen].metodos[metodo] = { metodo, total: 0 };
+      }
+      origenes[origen].metodos[metodo].total += monto;
+    });
+
+    return {
+      VENTA_DEL_DIA: {
+        nombre: origenes.VENTA_DEL_DIA.nombre,
+        metodos: Object.values(origenes.VENTA_DEL_DIA.metodos),
+      },
+      PAGO_CUENTA_CORRIENTE: {
+        nombre: origenes.PAGO_CUENTA_CORRIENTE.nombre,
+        metodos: Object.values(origenes.PAGO_CUENTA_CORRIENTE.metodos),
+      },
+    };
+  };
+
   const capitalize = (str) =>
     str && typeof str === "string"
       ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
@@ -308,10 +341,20 @@ const CierreCajaGeneral = () => {
     y += 10;
 
     // Tabla de resumen financiero
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("RESUMEN FINANCIERO", 14, y);
+    y += 4;
+    doc.setFont("helvetica", "normal");
+
+    const contentWidth = pageWidth - 28;
+    const colWidthConcepto = Math.round(contentWidth * 0.62);
+    const colWidthMonto = contentWidth - colWidthConcepto;
+
     const resumenData = [
       ["Total Ventas", `$${(cierre.totalVentas || 0).toLocaleString("es-AR")}`],
       ["Total Cobrado", `$${(cierre.totalPagado || 0).toLocaleString("es-AR")}`],
-      ["Total Cuenta Corriente", `$${(cierre.totalCuentaCorriente || 0).toLocaleString("es-AR")}`],
+      ["Ventas a cuenta corriente", `$${(cierre.totalCuentaCorriente || 0).toLocaleString("es-AR")}`],
       ["Total Efectivo (Sistema)", `$${(cierre.totalEfectivo || 0).toLocaleString("es-AR")}`],
       ["Gastos", `-$${(cierre.totalGastos || 0).toLocaleString("es-AR")}`],
       ["Efectivo Contado", `$${(cierre.ingresoLimpio || 0).toLocaleString("es-AR")}`],
@@ -322,12 +365,14 @@ const CierreCajaGeneral = () => {
       head: [["Concepto", "Monto"]],
       body: resumenData,
       startY: y,
-      theme: "striped",
+      theme: "grid",
       margin: { left: 14, right: 14 },
       styles: {
         font: "helvetica",
         fontSize: 10,
-        cellPadding: 3,
+        cellPadding: 3.5,
+        lineColor: [229, 231, 235],
+        lineWidth: 0.2,
       },
       headStyles: {
         fontStyle: "bold",
@@ -336,16 +381,69 @@ const CierreCajaGeneral = () => {
         halign: "center",
       },
       columnStyles: {
-        0: { cellWidth: 100 },
-        1: { cellWidth: 60, halign: "right" },
+        0: { cellWidth: colWidthConcepto },
+        1: { cellWidth: colWidthMonto, halign: "right" },
       },
       alternateRowStyles: { fillColor: [245, 247, 250] },
       didParseCell: (data) => {
         // Colorear la diferencia según sea positiva o negativa
-        if (data.row.index === 6 && data.column.index === 1) {
+        if (
+          data.column.index === 1 &&
+          Array.isArray(data.row.raw) &&
+          data.row.raw[0] === "Diferencia"
+        ) {
           data.cell.styles.textColor = diferencia >= 0 ? [22, 163, 74] : [220, 38, 38];
           data.cell.styles.fontStyle = "bold";
         }
+      },
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+
+    const gruposPorOrigen = agruparPorOrigenYMetodo(detallesVentas);
+    const origenRows = [];
+    ["VENTA_DEL_DIA", "PAGO_CUENTA_CORRIENTE"].forEach((key) => {
+      const origen = gruposPorOrigen[key];
+      const metodos = origen?.metodos || [];
+      if (metodos.length === 0) {
+        origenRows.push([origen.nombre, "-", "$0"]);
+        return;
+      }
+      let subtotal = 0;
+      metodos.forEach((m) => {
+        subtotal += m.total;
+        origenRows.push([
+          origen.nombre,
+          m.metodo,
+          `$${m.total.toLocaleString("es-AR")}`,
+        ]);
+      });
+      origenRows.push([
+        { content: `Subtotal ${origen.nombre}`, colSpan: 2, styles: { fontStyle: "bold" } },
+        { content: `$${subtotal.toLocaleString("es-AR")}`, styles: { fontStyle: "bold" } },
+      ]);
+    });
+
+    autoTable(doc, {
+      head: [["Origen", "Método de pago", "Monto"]],
+      body: origenRows,
+      startY: y,
+      theme: "grid",
+      margin: { left: 14, right: 14 },
+      styles: {
+        font: "helvetica",
+        fontSize: 9,
+        cellPadding: 2,
+      },
+      headStyles: {
+        fontStyle: "bold",
+        fillColor: [229, 231, 235],
+        textColor: [55, 65, 81],
+      },
+      columnStyles: {
+        0: { cellWidth: 55 },
+        1: { cellWidth: 65 },
+        2: { cellWidth: 40, halign: "right" },
       },
     });
 
@@ -549,7 +647,7 @@ const CierreCajaGeneral = () => {
                   Total Otros
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total Cuenta Corriente
+                  Ventas a cuenta corriente
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Gastos del día
@@ -641,7 +739,7 @@ const CierreCajaGeneral = () => {
                         </div>
                       </div>
                       <div>
-                        <span className="text-gray-500">Total Cuenta Corriente</span>
+                        <span className="text-gray-500">Ventas a cuenta corriente</span>
                         <div className="font-medium text-gray-900">
                           {formatCurrency(totales.totalCuentaCorriente || 0)}
                         </div>
@@ -708,7 +806,7 @@ const CierreCajaGeneral = () => {
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <Tooltip title="Total enviado a cuenta corriente en este cierre">
-                    <span className="cursor-help">Total Cuenta Corriente</span>
+                    <span className="cursor-help">Ventas a cuenta corriente</span>
                   </Tooltip>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -902,7 +1000,7 @@ const CierreCajaGeneral = () => {
                     </div>
                     <div>
                       <span className="text-gray-500 block">
-                        Total Cuenta Corriente
+                        Ventas a cuenta corriente
                       </span>
                       <div className="font-medium text-gray-900">
                         {formatCurrency(cierre.totalCuentaCorriente)}
@@ -1047,6 +1145,39 @@ const CierreCajaGeneral = () => {
             </span>
           </div>
         )}
+        {detalleMetodos.length > 0 && (() => {
+          const gruposPorOrigen = agruparPorOrigenYMetodo(detalleMetodos);
+          return (
+            <div className="mb-4 space-y-3">
+              {["VENTA_DEL_DIA", "PAGO_CUENTA_CORRIENTE"].map((key) => {
+                const origen = gruposPorOrigen[key];
+                const metodos = origen?.metodos || [];
+                const subtotal = metodos.reduce((acc, m) => acc + (m.total || 0), 0);
+                return (
+                  <div key={key} className="bg-gray-50 border border-gray-200 rounded-md p-3">
+                    <div className="font-semibold text-gray-800 mb-2">{origen.nombre}</div>
+                    {metodos.length === 0 ? (
+                      <div className="text-sm text-gray-500">Sin cobros</div>
+                    ) : (
+                      <div className="space-y-1 text-sm">
+                        {metodos.map((m) => (
+                          <div key={`${key}-${m.metodo}`} className="flex justify-between">
+                            <span>{m.metodo}</span>
+                            <span className="font-medium">{formatCurrency(m.total)}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between font-semibold pt-1 border-t border-gray-200">
+                          <span>Subtotal</span>
+                          <span>{formatCurrency(subtotal)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
         {detalleMetodos.length === 0 ? (
           <p className="text-sm text-gray-500">
             No hay métodos de pago registrados para este cierre.
