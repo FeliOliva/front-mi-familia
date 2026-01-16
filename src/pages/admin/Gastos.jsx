@@ -93,12 +93,7 @@ const Gastos = () => {
         return;
       }
 
-      const usuarioId = Number(localStorage.getItem("usuarioId"));
       const cajaId = Number(localStorage.getItem("cajaId"));
-      if (!usuarioId) {
-        message.error("No se pudo identificar el usuario");
-        return;
-      }
       if (!cajaId) {
         message.error("No se pudo identificar la caja");
         return;
@@ -116,7 +111,6 @@ const Gastos = () => {
         await api("api/gastos", "POST", {
           motivo: motivoUpper,
           monto: montoNum,
-          usuarioId,
           cajaId,
         });
         message.success("Gasto agregado correctamente");
