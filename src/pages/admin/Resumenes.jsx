@@ -65,6 +65,19 @@ const formatMoneyAR = (value) => {
 };
 const parseFromInputNumber = (v) => parseMontoFlexible(v);
 
+const getImageAsDataUrl = (url) =>
+  new Promise((resolve, reject) => {
+    fetch(url)
+      .then((res) => res.blob())
+      .then((blob) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      })
+      .catch(reject);
+  });
+
 const prepararTransacciones = (raw) => {
   const base = (raw || []).map((item) => {
     const fecha = item.fecha || item.fechaCreacion || new Date().toISOString();
@@ -72,7 +85,7 @@ const prepararTransacciones = (raw) => {
     const montoBase = Math.abs(Number(
       item.total_con_descuento ?? item.total ?? item.monto ?? 0
     ));
-    
+
     // Inferir el tipo si no viene en el item
     let tipo = item.tipo;
     if (!tipo) {
@@ -89,14 +102,14 @@ const prepararTransacciones = (raw) => {
         tipo = "Entrega"; // Asumir entrega si no hay otros indicadores
       }
     }
-    
+
     // Saldo Inicial y Ventas SUMAN (deuda), Entregas y NC RESTAN (pagos)
     const esSumaDeuda = tipo === "Venta" || tipo === "Saldo Inicial" || item.esSaldoInicial;
     const signo = esSumaDeuda ? +1 : -1;
-    
+
     // Asegurar que los IDs se preserven correctamente
     const idFinal = item.id || item.ventaId || item.entregaId || item.notaCreditoId;
-    
+
     // Asegurar que el campo numero esté presente
     let numero = item.numero;
     if (!numero) {
@@ -108,7 +121,7 @@ const prepararTransacciones = (raw) => {
         numero = item.nroNotaCredito || item.numero || null;
       }
     }
-    
+
     return {
       ...item,
       tipo, // Asegurar que siempre haya un tipo
@@ -146,6 +159,7 @@ const VentasPorNegocio = () => {
   // Obtener rol del usuario (1 = encargado de ventas)
   const userRole = Number(localStorage.getItem("rol"));
   const isEncargadoVentas = userRole === 1;
+  const isRepartidor = userRole === 2;
 
   const [negocios, setNegocios] = useState([]);
   const [negocioSeleccionado, setNegocioSeleccionado] = useState(null);
@@ -209,6 +223,17 @@ const VentasPorNegocio = () => {
   useEffect(() => {
     const fetchNegocios = async () => {
       try {
+        if (isRepartidor) {
+          const cajaId = Number(localStorage.getItem("cajaId"));
+          if (!cajaId) {
+            setNegocios([]);
+            message.warning("No se encontró la caja del repartidor");
+            return;
+          }
+          const res = await api(`api/negocio/por-caja/${cajaId}`);
+          setNegocios(res.negocios || []);
+          return;
+        }
         const res = await api("api/getAllNegocios");
         setNegocios(res.negocios || []);
       } catch (err) {
@@ -216,7 +241,7 @@ const VentasPorNegocio = () => {
       }
     };
     fetchNegocios();
-  }, []);
+  }, [isRepartidor]);
 
   useEffect(() => {
     const fetchMetodosPago = async () => {
@@ -322,7 +347,7 @@ const VentasPorNegocio = () => {
     try {
       let res;
       const idFinal = record.ventaId || record.id;
-      
+
       if (record.tipo === "Venta") {
         if (!idFinal) {
           message.error("No se pudo identificar la venta para editar");
@@ -402,16 +427,16 @@ const VentasPorNegocio = () => {
   const handleEliminar = async (id, tipo, record = null) => {
     // Para saldo inicial, usar el id del saldoInicial del estado
     const esSaldoIni = tipo === "Saldo Inicial" || record?.esSaldoInicial;
-    
+
     // Para ventas, usar ventaId si existe
     const idFinal = tipo === "Venta" ? (record?.ventaId || id) : id;
-    
+
     Modal.confirm({
-      title: esSaldoIni 
-        ? "¿Estás seguro que querés eliminar el Saldo Inicial?" 
+      title: esSaldoIni
+        ? "¿Estás seguro que querés eliminar el Saldo Inicial?"
         : "¿Estás seguro que querés eliminar esta " + tipo + "?",
-      content: esSaldoIni 
-        ? "Esto eliminará permanentemente el saldo inicial del cliente." 
+      content: esSaldoIni
+        ? "Esto eliminará permanentemente el saldo inicial del cliente."
         : undefined,
       okText: "Sí, eliminar",
       okType: "danger",
@@ -531,7 +556,7 @@ const VentasPorNegocio = () => {
     const { tipo, id, ventaId } = record;
     // Usar ventaId si existe, sino id
     const ventaIdFinal = ventaId || id;
-    
+
     try {
       if (tipo === "Nota de Crédito") {
         if (!id) {
@@ -638,16 +663,21 @@ const VentasPorNegocio = () => {
     }
   };
 
-  const handleBuscarTransacciones = async () => {
-    if (!negocioSeleccionado) {
+  const handleBuscarTransacciones = async (negocioId = negocioSeleccionado) => {
+    if (!negocioId) {
       message.warning("Seleccioná un negocio");
       return;
     }
-    
+    const negocioIdNum = Number(negocioId);
+    if (!Number.isFinite(negocioIdNum)) {
+      message.warning("Seleccioná un negocio válido");
+      return;
+    }
+
     // Si no hay fechas, usar fechas por defecto (último mes hasta hoy)
     let fechaInicioFinal = fechaInicio;
     let fechaFinFinal = fechaFin;
-    
+
     if (!fechaInicioFinal || !fechaFinFinal) {
       fechaInicioFinal = dayjs().subtract(1, "month");
       fechaFinFinal = dayjs();
@@ -660,7 +690,7 @@ const VentasPorNegocio = () => {
 
     try {
       const res = await api(
-        `api/resumenCuenta/negocio/${negocioSeleccionado}?startDate=${startDate}&endDate=${endDate}`
+        `api/resumenCuenta/negocio/${negocioIdNum}?startDate=${startDate}&endDate=${endDate}`
       );
       const transaccionesPreparadas = prepararTransacciones(res);
       setTransacciones(transaccionesPreparadas);
@@ -683,8 +713,14 @@ const VentasPorNegocio = () => {
     }
   };
 
+  // Auto-buscar al cambiar cliente o fechas
+  useEffect(() => {
+    if (!negocioSeleccionado || !fechaInicio || !fechaFin) return;
+    handleBuscarTransacciones(negocioSeleccionado);
+  }, [negocioSeleccionado, fechaInicio, fechaFin]);
+
   // Obtener resumen (función para refrescar después de cambios)
-  const obtenerResumen = () => {
+  const obtenerResumen = (negocioId) => {
     // Si no se ha buscado antes, hacer la búsqueda inicial
     if (!hasBuscado && (!fechaInicio || !fechaFin)) {
       // Usar fechas por defecto si no están definidas
@@ -693,7 +729,17 @@ const VentasPorNegocio = () => {
       setFechaInicio(fechaInicioDefault);
       setFechaFin(fechaFinDefault);
     }
-    handleBuscarTransacciones();
+    handleBuscarTransacciones(negocioId);
+  };
+
+  const handleNegocioChange = (value) => {
+    if (!value) {
+      setNegocioSeleccionado(null);
+      setHasBuscado(false);
+      setTransacciones([]);
+      return;
+    }
+    setNegocioSeleccionado(value);
   };
 
   // Definir columnas según el tamaño de pantalla
@@ -754,8 +800,8 @@ const VentasPorNegocio = () => {
           render: (saldo) => {
             if (saldo === null || saldo === undefined) return "-";
             const color = saldo > 0 ? "#cf1322" : saldo < 0 ? "#389e0d" : "#666";
-            const texto = saldo >= 0 
-              ? `$${saldo.toLocaleString("es-AR")}` 
+            const texto = saldo >= 0
+              ? `$${saldo.toLocaleString("es-AR")}`
               : `-$${Math.abs(saldo).toLocaleString("es-AR")}`;
             return <span style={{ color, fontWeight: 500 }}>{texto}</span>;
           },
@@ -817,8 +863,8 @@ const VentasPorNegocio = () => {
           render: (saldo) => {
             if (saldo === null || saldo === undefined) return "-";
             const color = saldo > 0 ? "#cf1322" : saldo < 0 ? "#389e0d" : "#666";
-            const texto = saldo >= 0 
-              ? `$${saldo.toLocaleString("es-AR")}` 
+            const texto = saldo >= 0
+              ? `$${saldo.toLocaleString("es-AR")}`
               : `-$${Math.abs(saldo).toLocaleString("es-AR")}`;
             return <span style={{ color, fontWeight: 500 }}>{texto}</span>;
           },
@@ -848,7 +894,7 @@ const VentasPorNegocio = () => {
     }
   };
 
-  const handleImprimirResumen = () => {
+  const handleImprimirResumen = async () => {
     if (!negocioSeleccionado) {
       message.warning("Seleccioná un negocio primero");
       return;
@@ -861,58 +907,84 @@ const VentasPorNegocio = () => {
     const negocio = negocios.find((n) => n.id === negocioSeleccionado);
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
-    let y = 15;
+    const pageHeight = doc.internal.pageSize.getHeight();
 
-    // Encabezado
-    doc.setFontSize(18);
+    let y = 16;
+
+    /* =========================
+       LOGO (SIN BORDE)
+    ========================= */
+    try {
+      const logoUrl = `${window.location.origin}/logoverdu.png`;
+      const logoDataUrl = await getImageAsDataUrl(logoUrl);
+      if (logoDataUrl) {
+        doc.addImage(logoDataUrl, "PNG", pageWidth - 50, y - 16, 38, 38);
+      }
+    } catch (e) {}
+
+    /* =========================
+       TÍTULO
+    ========================= */
+    doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
-    doc.text("VERDULERÍA MI FAMILIA", pageWidth / 2, y, { align: "center" });
-    y += 8;
+    doc.setTextColor(0);
+    doc.text(
+      `Resumen del cliente ${negocio?.nombre || "-"}`,
+      14,
+      y + 10
+    );
 
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "normal");
-    doc.text("Resumen de Cuenta Corriente", pageWidth / 2, y, { align: "center" });
-    y += 10;
-
-    // Info del negocio y período
+    /* =========================
+       PERÍODO (SIN BARRA OSCURA)
+    ========================= */
     doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text(`Cliente: ${negocio?.nombre || "-"}`, 14, y);
-    y += 5;
-    
     doc.setFont("helvetica", "normal");
+    doc.setTextColor(90);
+
     if (fechaInicio && fechaFin) {
       doc.text(
-        `Período: ${dayjs(fechaInicio).format("DD/MM/YYYY")} - ${dayjs(fechaFin).format("DD/MM/YYYY")}`,
+        `Período: ${dayjs(fechaInicio).format("DD-MM-YYYY")} a ${dayjs(fechaFin).format("DD-MM-YYYY")}`,
         14,
-        y
+        y + 18
       );
-      y += 5;
     }
-    doc.text(`Fecha de emisión: ${dayjs().format("DD/MM/YYYY HH:mm")}`, 14, y);
-    y += 8;
 
-    // Las transacciones ya vienen ordenadas por fecha de manera cronológica
+    /* =========================
+       SEPARADOR SUAVE
+    ========================= */
+    doc.setDrawColor(220);
+    doc.line(14, y + 22, pageWidth - 14, y + 22);
+
+    doc.setTextColor(0);
+    y += 30;
+
+    /* =========================
+       TRANSACCIONES
+    ========================= */
     const transaccionesOrdenadas = [...transacciones];
 
-    // Calcular totales
     const totalVentas = transacciones
       .filter((t) => t.tipo === "Venta")
       .reduce((acc, t) => acc + Number(t.total_con_descuento ?? t.total ?? t.monto ?? 0), 0);
+
     const totalEntregas = transacciones
       .filter((t) => t.tipo === "Entrega")
       .reduce((acc, t) => acc + Number(t.monto ?? 0), 0);
+
     const totalNC = transacciones
       .filter((t) => t.tipo === "Nota de Crédito")
       .reduce((acc, t) => acc + Number(t.monto ?? 0), 0);
 
-    // Tabla de movimientos
+    const montoSaldoIni = saldoInicial?.monto || 0;
+
     const tableData = transaccionesOrdenadas.map((item) => {
       const tipoAbrev = item.tipo === "Nota de Crédito" ? "N.C." : item.tipo;
       const signo = item.tipo === "Venta" ? "" : "-";
+      const detalle = item.esSaldoInicial ? "Saldo Inicial" : tipoAbrev;
+
       return [
         dayjs(item.fecha).format("DD/MM/YY"),
-        tipoAbrev,
+        detalle,
         item.numero || "-",
         `${signo}$${item.monto_formateado}`,
         `$${item.saldo_restante?.toLocaleString("es-AR") || "0"}`,
@@ -920,7 +992,7 @@ const VentasPorNegocio = () => {
     });
 
     autoTable(doc, {
-      head: [["Fecha", "Tipo", "Nro", "Monto", "Saldo"]],
+      head: [["Fecha", "Detalle", "Nro", "Monto", "Saldo"]],
       body: tableData,
       startY: y,
       theme: "striped",
@@ -928,72 +1000,101 @@ const VentasPorNegocio = () => {
       styles: {
         font: "helvetica",
         fontSize: 9,
-        cellPadding: 2,
+        cellPadding: 2.2,
       },
       headStyles: {
+        fillColor: [225, 225, 225],
+        textColor: 40,
         fontStyle: "bold",
-        fillColor: [76, 175, 80],
-        textColor: 255,
         halign: "center",
       },
       columnStyles: {
         0: { cellWidth: 22, halign: "center" },
-        1: { cellWidth: 22, halign: "center" },
-        2: { cellWidth: 25, halign: "center" },
-        3: { cellWidth: 35, halign: "right" },
-        4: { cellWidth: 35, halign: "right" },
+        1: { cellWidth: 52, halign: "left" },
+        2: { cellWidth: 22, halign: "center" },
+        3: { cellWidth: 32, halign: "right" },
+        4: { cellWidth: 32, halign: "right", fontStyle: "bold" },
       },
-      alternateRowStyles: { fillColor: [245, 245, 245] },
+      alternateRowStyles: { fillColor: [248, 248, 248] },
     });
 
-    // Resumen final
-    const finalY = doc.lastAutoTable.finalY + 10;
+    /* =========================
+       RESUMEN
+    ========================= */
+    let ry = doc.lastAutoTable.finalY + 12;
 
-    doc.setFillColor(240, 240, 240);
-    doc.rect(14, finalY - 2, pageWidth - 28, 28, "F");
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text("RESUMEN", 18, finalY + 4);
-
-    doc.setFont("helvetica", "normal");
-    doc.text(`Total Ventas:`, 18, finalY + 10);
-    doc.text(`$${totalVentas.toLocaleString("es-AR")}`, pageWidth - 18, finalY + 10, { align: "right" });
-
-    doc.text(`Total Entregas:`, 18, finalY + 16);
-    doc.text(`-$${totalEntregas.toLocaleString("es-AR")}`, pageWidth - 18, finalY + 16, { align: "right" });
-
-    if (totalNC > 0) {
-      doc.text(`Notas de Crédito:`, 18, finalY + 22);
-      doc.text(`-$${totalNC.toLocaleString("es-AR")}`, pageWidth - 18, finalY + 22, { align: "right" });
+    if (ry + 60 > pageHeight - 20) {
+      doc.addPage();
+      ry = 20;
     }
 
-    // Saldo pendiente destacado
-    const saldoY = totalNC > 0 ? finalY + 32 : finalY + 28;
-    doc.setFillColor(76, 175, 80);
-    doc.rect(14, saldoY - 2, pageWidth - 28, 10, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(11);
+    doc.setDrawColor(200);
+    doc.line(14, ry - 6, pageWidth - 14, ry - 6);
+
+    doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text("SALDO PENDIENTE:", 18, saldoY + 4);
-    doc.text(`$${saldoPendiente.toLocaleString("es-AR")}`, pageWidth - 18, saldoY + 4, { align: "right" });
+    doc.text("Resumen de cuenta", 14, ry);
 
-    // Resetear color
-    doc.setTextColor(0, 0, 0);
-
-    // Pie de página
-    const pageHeight = doc.internal.pageSize.getHeight();
-    doc.setFontSize(8);
+    ry += 8;
+    doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text("Verdulería Mi Familia - Documento generado automáticamente", pageWidth / 2, pageHeight - 10, {
-      align: "center",
-    });
 
-    // Guardar PDF
+    const leftX = 18;
+    const rightX = pageWidth - 18;
+
+    const row = (label, value) => {
+      doc.text(label, leftX, ry);
+      doc.text(value, rightX, ry, { align: "right" });
+      ry += 6;
+    };
+
+    row("Saldo inicial", `$${montoSaldoIni.toLocaleString("es-AR")}`);
+    row("Ventas", `+$${totalVentas.toLocaleString("es-AR")}`);
+    row("Pagos", `-$${totalEntregas.toLocaleString("es-AR")}`);
+    row("Notas de crédito", `-$${totalNC.toLocaleString("es-AR")}`);
+
+    /* =========================
+       SALDO PENDIENTE
+    ========================= */
+    ry += 6;
+    doc.setFillColor(238, 248, 240);
+    doc.roundedRect(14, ry, pageWidth - 28, 14, 2, 2, "F");
+
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Saldo pendiente", 18, ry + 9);
+    doc.text(
+      `$${saldoPendiente.toLocaleString("es-AR")}`,
+      pageWidth - 18,
+      ry + 9,
+      { align: "right" }
+    );
+
+    /* =========================
+       FOOTER
+    ========================= */
+    doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      "Verdulería Mi Familia · Documento informativo",
+      pageWidth / 2,
+      pageHeight - 8,
+      { align: "center" }
+    );
+
+    doc.setTextColor(0);
+
+    /* =========================
+       GUARDAR
+    ========================= */
     const nombreArchivo = `resumen-${negocio?.nombre?.replace(/\s+/g, "-") || "cuenta"}-${dayjs().format("DDMMYYYY")}.pdf`;
     doc.save(nombreArchivo);
+
     message.success("PDF generado correctamente");
   };
+
+
 
   // Cálculo del saldo: (saldoInicial + ventas) - (pagos + notasCredito)
   // Positivo = cliente DEBE | Negativo = cliente tiene SALDO A FAVOR
@@ -1046,11 +1147,7 @@ const VentasPorNegocio = () => {
                   filterOption={(input, option) =>
                     (option?.label?.toLowerCase() ?? "").includes(input.toLowerCase())
                   }
-                  onChange={(value) => {
-                    setNegocioSeleccionado(value);
-                    setHasBuscado(false);
-                    setTransacciones([]);
-                  }}
+                  onChange={handleNegocioChange}
                   value={negocioSeleccionado}
                   className="mb-2"
                 >
@@ -1081,15 +1178,7 @@ const VentasPorNegocio = () => {
                     }
                   />
                 </div>
-                <div className="flex gap-2 w-full mb-2">
-                  <Button
-                    type="primary"
-                    onClick={handleBuscarTransacciones}
-                    className="flex-1"
-                  >
-                    Buscar Movimientos
-                  </Button>
-                </div>
+                <div className="flex gap-2 w-full mb-2" />
               </>
             ) : (
               <>
@@ -1101,11 +1190,7 @@ const VentasPorNegocio = () => {
                   filterOption={(input, option) =>
                     (option?.label?.toLowerCase() ?? "").includes(input.toLowerCase())
                   }
-                  onChange={(value) => {
-                    setNegocioSeleccionado(value);
-                    setHasBuscado(false);
-                    setTransacciones([]);
-                  }}
+                  onChange={handleNegocioChange}
                   value={negocioSeleccionado}
                 >
                   {negocios
@@ -1122,9 +1207,6 @@ const VentasPorNegocio = () => {
                   style={{ width: "100%", maxWidth: 350 }}
                   format="DD/MM/YYYY"
                 />
-                <Button type="primary" onClick={handleBuscarTransacciones}>
-                  Buscar Movimientos
-                </Button>
               </>
             )}
           </div>
@@ -1206,7 +1288,7 @@ const VentasPorNegocio = () => {
                   {saldoPendiente > 0 ? "Deuda" : saldoPendiente < 0 ? "Saldo a Favor" : "Saldado"}
                 </p>
                 <p className={`text-xl font-bold ${saldoPendiente > 0 ? "text-red-700" : saldoPendiente < 0 ? "text-green-700" : "text-gray-700"}`}>
-                  {saldoPendiente >= 0 
+                  {saldoPendiente >= 0
                     ? `$${saldoPendiente.toLocaleString("es-AR")}`
                     : `-$${Math.abs(saldoPendiente).toLocaleString("es-AR")}`
                   }
@@ -1725,11 +1807,11 @@ const VentasPorNegocio = () => {
               </p>
               <p>
                 <strong>Saldo:</strong>{" "}
-                <span style={{ 
+                <span style={{
                   color: selectedRecord.saldo_restante > 0 ? "#cf1322" : selectedRecord.saldo_restante < 0 ? "#389e0d" : "#666",
-                  fontWeight: 500 
+                  fontWeight: 500
                 }}>
-                  {selectedRecord.saldo_restante >= 0 
+                  {selectedRecord.saldo_restante >= 0
                     ? `$${(selectedRecord.saldo_restante || 0).toLocaleString("es-AR")}`
                     : `-$${Math.abs(selectedRecord.saldo_restante).toLocaleString("es-AR")}`
                   }

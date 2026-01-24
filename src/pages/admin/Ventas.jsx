@@ -7,6 +7,7 @@ import {
   Select,
   Input,
   Form,
+  Switch,
   Space,
   List,
   Drawer,
@@ -260,6 +261,7 @@ const Ventas = () => {
   // Búsqueda de ventas por nroVenta
   const [busquedaVenta, setBusquedaVenta] = useState("");
   const [debouncedBusqueda, setDebouncedBusqueda] = useState("");
+  const [mostrarHistorico, setMostrarHistorico] = useState(false);
 
   // Estados para mostrar detalles de venta
   const [detalleModalVisible, setDetalleModalVisible] = useState(false);
@@ -376,6 +378,11 @@ const Ventas = () => {
       params.set("page", page);
       params.set("limit", pageSize);
       if (q) params.set("q", q);
+      if (!mostrarHistorico) {
+        const hoy = dayjs().format("YYYY-MM-DD");
+        params.set("startDate", hoy);
+        params.set("endDate", hoy);
+      }
 
       const { ventas, total } = await api(`api/ventas?${params.toString()}`);
       console.log("ventas ", ventas);
@@ -426,7 +433,7 @@ const Ventas = () => {
 
   useEffect(() => {
     fetchVentas(currentPage, debouncedBusqueda);
-  }, [currentPage, debouncedBusqueda]);
+  }, [currentPage, debouncedBusqueda, mostrarHistorico]);
 
   useEffect(() => {
     cargarNegocios();
@@ -1143,6 +1150,21 @@ const Ventas = () => {
                   </Option>
                 ))}
             </Select>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-600">Histórico:</span>
+              <Switch
+                checked={mostrarHistorico}
+                onChange={(value) => {
+                  setMostrarHistorico(value);
+                  setCurrentPage(1);
+                }}
+              />
+              {!mostrarHistorico && (
+                <span className="text-gray-500 text-sm">
+                  Mostrando ventas de hoy ({dayjs().format("DD/MM/YYYY")})
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
