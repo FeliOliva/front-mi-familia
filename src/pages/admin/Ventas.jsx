@@ -118,6 +118,18 @@ const generarPDF = async (venta) => {
     : Array.isArray(venta.detalleventa)
       ? venta.detalleventa
       : [];
+  const formatCantidadConUnidad = (d) => {
+    if (d.cantidadConUnidad) return String(d.cantidadConUnidad);
+    const unidad =
+      d.tipoUnidad ||
+      d._unidad ||
+      d.producto?.tipoUnidad?.tipo ||
+      d.producto?.tipounidad?.tipo;
+    const cantidadTxt = Number(d.cantidad || 0).toLocaleString("es-AR", {
+      maximumFractionDigits: 2,
+    });
+    return unidad ? `${cantidadTxt} ${getUnidadAbbr(unidad)}` : cantidadTxt;
+  };
   const n = detalles.length;
   const altoBase = 70,
     altoPorFila = 6,
@@ -192,7 +204,7 @@ const generarPDF = async (venta) => {
 
   // Tabla productos — usa cantidadConUnidad si está
   const productosData = detalles.map((d) => {
-    const cant = d.cantidadConUnidad ?? String(d.cantidad ?? "");
+    const cant = formatCantidadConUnidad(d);
     const subtotal = `$${nf.format((d.precio || 0) * Number(d.cantidad || 0))}`;
     return [d.producto?.nombre || "Producto", cant, subtotal];
   });
@@ -728,10 +740,22 @@ const Ventas = () => {
         });
         message.success("Venta guardada con éxito");
         try {
-          const ventaCompleta = await api(`api/ventas/${ventaCreada.id}`);
+          const negocio = negocios.find(
+            (n) => Number(n.id) === Number(selectedNegocio)
+          );
+          const detallesParaPDF = productosSeleccionados.map((p) => ({
+            ...p,
+            producto: { nombre: p.nombre },
+            cantidadConUnidad: `${Number(p.cantidad || 0).toLocaleString("es-AR", {
+              maximumFractionDigits: 2,
+            })} ${getUnidadAbbr(p.tipoUnidad || p._unidad || "UNIDAD")}`,
+          }));
           const ventaParaPDF = {
-            ...ventaCompleta,
-            detalles: ventaCompleta.detalleventa ?? ventaCompleta.detalles ?? [],
+            ...ventaCreada,
+            detalles: detallesParaPDF,
+            negocio,
+            negocioNombre: negocio?.nombre,
+            observacion: observacionFinal,
           };
           await generarPDF(ventaParaPDF);
         } catch (errPdf) {
@@ -943,6 +967,7 @@ const Ventas = () => {
 
   // Agregar producto preseleccionado con Enter
   const handleCantidadKeyDown = (e) => {
+    if (isMobile) return;
     if (e.key === "Enter" && productoPreseleccionado) {
       e.preventDefault();
       agregarProducto(productoPreseleccionado);
@@ -951,6 +976,7 @@ const Ventas = () => {
 
   // Manejar teclas en el buscador: flechas para navegar, Enter/Tab para seleccionar
   const handleBuscadorKeyDown = (e) => {
+    if (isMobile && (e.key === "Tab" || e.key === "Enter")) return;
     // Tab: si hay productos disponibles, preseleccionar y pasar a cantidad
     if (e.key === "Tab" && !e.shiftKey && showProductList && productosDisponibles.length > 0) {
       e.preventDefault();
@@ -1441,7 +1467,7 @@ const Ventas = () => {
                     style={{ width: "100%" }}
                     size={isMobile ? "middle" : "large"}
                   />
-                  {productoPreseleccionado && (
+                  {productoPreseleccionado && !isMobile && (
                     <div style={{ fontSize: 11, color: "#1890ff", marginTop: 2 }}>
                       ↵ Enter para agregar
                     </div>
@@ -1462,6 +1488,20 @@ const Ventas = () => {
                   </Button>
                 </Col>
               </Row>
+              {isMobile && (
+                <Row gutter={[8, 8]} style={{ marginTop: 8 }}>
+                  <Col span={24}>
+                    <Button
+                      type="primary"
+                      block
+                      onClick={() => productoPreseleccionado && agregarProducto(productoPreseleccionado)}
+                      disabled={!productoPreseleccionado || !cantidad || cantidad <= 0}
+                    >
+                      Agregar
+                    </Button>
+                  </Col>
+                </Row>
+              )}
 
               {showProductList && (
                 <Card
