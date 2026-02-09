@@ -233,6 +233,7 @@ const generarPdfResumenGeneral = async ({
   totalVentas,
   totalEntregas,
   totalNotasCredito,
+  totalSaldoInicial,
 }) => {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -268,12 +269,14 @@ const generarPdfResumenGeneral = async ({
 
   const fmt = (value) => `$${Number(value || 0).toLocaleString("es-AR")}`;
   const filas = (todosNegocios || []).map((n) => {
+    const saldoInicial = Number(n.saldoInicial || 0);
     const ventas = Number(n.totalCompras || 0);
     const pagos = Number(n.totalPagos || 0);
     const nc = Number(n.totalNC || 0);
-    const saldo = ventas - (pagos + nc);
+    const saldo = ventas + saldoInicial - (pagos + nc);
     return [
       String(n.nombre || "-").trim(),
+      fmt(saldoInicial),
       fmt(ventas),
       fmt(pagos),
       fmt(nc),
@@ -281,20 +284,24 @@ const generarPdfResumenGeneral = async ({
     ];
   });
   if (consumidorFinal) {
+    const saldoInicial = Number(consumidorFinal.saldoInicial || 0);
     const v = Number(consumidorFinal.totalCompras || 0);
     const p = Number(consumidorFinal.totalPagos || 0);
     const nc = Number(consumidorFinal.totalNC || 0);
     filas.push([
       "Consumidor Final",
+      fmt(saldoInicial),
       fmt(v),
       fmt(p),
       fmt(nc),
-      fmt(v - p - nc),
+      fmt(v + saldoInicial - p - nc),
     ]);
   }
-  const totalSaldo = (totalVentas || 0) - (totalEntregas || 0) - (totalNotasCredito || 0);
+  const totalVentasConSaldo = (totalVentas || 0) + (totalSaldoInicial || 0);
+  const totalSaldo = totalVentasConSaldo - (totalEntregas || 0) - (totalNotasCredito || 0);
   filas.push([
     "TOTAL",
+    fmt(totalSaldoInicial),
     fmt(totalVentas),
     fmt(totalEntregas),
     fmt(totalNotasCredito),
@@ -302,7 +309,7 @@ const generarPdfResumenGeneral = async ({
   ]);
 
   autoTable(doc, {
-    head: [["Cliente", "Ventas", "Pagos", "N.C.", "Saldo"]],
+    head: [["Cliente", "Saldo inicial", "Ventas", "Pagos", "N.C.", "Saldo"]],
     body: filas,
     startY: y,
     theme: "striped",
@@ -310,11 +317,12 @@ const generarPdfResumenGeneral = async ({
     styles: { font: "helvetica", fontSize: 9, cellPadding: 2.2 },
     headStyles: { fillColor: [225, 225, 225], textColor: 40, fontStyle: "bold", halign: "center" },
     columnStyles: {
-      0: { cellWidth: 55, halign: "left" },
-      1: { cellWidth: 32, halign: "right" },
-      2: { cellWidth: 32, halign: "right" },
-      3: { cellWidth: 28, halign: "right" },
-      4: { cellWidth: 33, halign: "right", fontStyle: "bold" },
+      0: { cellWidth: 46, halign: "left" },
+      1: { cellWidth: 26, halign: "right" },
+      2: { cellWidth: 26, halign: "right" },
+      3: { cellWidth: 26, halign: "right" },
+      4: { cellWidth: 22, halign: "right" },
+      5: { cellWidth: 30, halign: "right", fontStyle: "bold" },
     },
     alternateRowStyles: { fillColor: [248, 248, 248] },
     didParseCell: (d) => {
@@ -352,7 +360,50 @@ const Estadisticas = () => {
       const res = await api(
         `api/estadisticas?startDate=${startDate}&endDate=${endDate}`
       );
-      setData(res);
+      const idsNegocios = (res.todosNegocios || [])
+        .map((n) => n.negocioId)
+        .filter(Boolean);
+      let saldoMap = new Map();
+      if (idsNegocios.length > 0) {
+        const saldos = await Promise.all(
+          idsNegocios.map((id) =>
+            api(`api/saldos-iniciales/${id}`).catch(() => null)
+          )
+        );
+        saldoMap = new Map(
+          idsNegocios.map((id, idx) => [
+            id,
+            Number(saldos[idx]?.monto || 0),
+          ])
+        );
+      }
+      const todosNegocios = (res.todosNegocios || []).map((n) => ({
+        ...n,
+        saldoInicial: Number(saldoMap.get(n.negocioId) || 0),
+      }));
+      const totalSaldoInicial = todosNegocios.reduce(
+        (acc, n) => acc + Number(n.saldoInicial || 0),
+        0
+      );
+      const totalVentasConSaldo =
+        Number(res.totalVentas || 0) + Number(totalSaldoInicial || 0);
+      const consumidorFinal = res.consumidorFinal
+        ? { ...res.consumidorFinal, saldoInicial: 0 }
+        : null;
+      setData({
+        ...res,
+        todosNegocios,
+        consumidorFinal,
+        totalSaldoInicial,
+        totalVentasConSaldo,
+        diferenciaVentasMenosPagosNC:
+          totalVentasConSaldo -
+          (Number(res.totalEntregas || 0) + Number(res.totalNotasCredito || 0)),
+        diferenciaConsiderandoGastos:
+          totalVentasConSaldo -
+          (Number(res.totalEntregas || 0) + Number(res.totalNotasCredito || 0)) -
+          Number(res.totalGastos || 0),
+      });
     } catch (error) {
       message.error(error.message || "Error al cargar estadísticas");
       setData(null);
@@ -433,6 +484,7 @@ const Estadisticas = () => {
         totalVentas: data.totalVentas,
         totalEntregas: data.totalEntregas,
         totalNotasCredito: data.totalNotasCredito,
+        totalSaldoInicial: data.totalSaldoInicial,
       });
       message.success("PDF generado correctamente");
     } catch (err) {
@@ -450,6 +502,14 @@ const Estadisticas = () => {
       ellipsis: true,
       width: 160,
       minWidth: 140,
+    },
+    {
+      title: "Saldo inicial",
+      dataIndex: "saldoInicial",
+      key: "saldoInicial",
+      width: 100,
+      align: "right",
+      render: (v) => formatMoneda(v),
     },
     {
       title: "Ventas",
@@ -482,9 +542,10 @@ const Estadisticas = () => {
       align: "right",
       render: (_, record) => {
         const ventas = Number(record.totalCompras || 0);
+        const saldoInicial = Number(record.saldoInicial || 0);
         const pagos = Number(record.totalPagos || 0);
         const nc = Number(record.totalNC || 0);
-        const saldo = ventas - (pagos + nc);
+        const saldo = ventas + saldoInicial - (pagos + nc);
         return (
           <span style={{ color: saldo >= 0 ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
             {formatMoneda(saldo)}
@@ -559,8 +620,18 @@ const Estadisticas = () => {
             <Col xs={24} sm={12} lg={8}>
               <Card>
                 <Statistic
-                  title="Total ventas (período)"
-                  value={data.totalVentas}
+                  title="Total ventas + saldo inicial"
+                  value={data.totalVentasConSaldo ?? data.totalVentas}
+                  prefix={<DollarOutlined />}
+                  formatter={(v) => formatMoneda(v)}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={8}>
+              <Card>
+                <Statistic
+                  title="Saldo inicial (clientes)"
+                  value={data.totalSaldoInicial ?? 0}
                   prefix={<DollarOutlined />}
                   formatter={(v) => formatMoneda(v)}
                 />
@@ -656,7 +727,7 @@ const Estadisticas = () => {
                     </p>
                     <Divider className="my-1" />
                     <p className="flex justify-between py-1" style={{ marginBottom: 4, alignItems: "center" }}>
-                      <span>Ventas − (pagos + NC)</span>
+                      <span>Ventas + saldo inicial − (pagos + NC)</span>
                       <span
                         style={{
                           fontWeight: 600,
@@ -667,7 +738,7 @@ const Estadisticas = () => {
                       </span>
                     </p>
                     <p className="flex justify-between py-1" style={{ alignItems: "center" }}>
-                      <span style={{ fontWeight: 600 }}>Ventas − (pagos + NC) − gastos</span>
+                      <span style={{ fontWeight: 600 }}>Ventas + saldo inicial − (pagos + NC) − gastos</span>
                       <span
                         style={{
                           fontSize: 16,
