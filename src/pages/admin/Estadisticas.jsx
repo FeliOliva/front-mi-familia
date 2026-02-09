@@ -10,6 +10,8 @@ import {
   Statistic,
   Divider,
   Button,
+  Modal,
+  Radio,
 } from "antd";
 import {
   DollarOutlined,
@@ -343,6 +345,110 @@ const generarPdfResumenGeneral = async ({
   doc.save(nombreArchivo);
 };
 
+const generarPdfDiarioClientes = async ({
+  todosNegocios,
+  fechaInicio,
+  fechaFin,
+  totalVentas,
+  totalEntregas,
+  totalNotasCredito,
+  totalSaldoInicial,
+}) => {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let y = 16;
+
+  try {
+    const logoUrl = `${window.location.origin}/logoverdu.png`;
+    const logoDataUrl = await getImageAsDataUrl(logoUrl);
+    if (logoDataUrl) doc.addImage(logoDataUrl, "PNG", pageWidth - 50, y - 16, 38, 38);
+  } catch (e) {}
+
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0);
+  doc.text("Diario de ventas por cliente", pageWidth / 2, y + 10, { align: "center" });
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(90);
+  if (fechaInicio && fechaFin) {
+    doc.text(
+      `Período: ${dayjs(fechaInicio).format("DD-MM-YYYY")} a ${dayjs(fechaFin).format("DD-MM-YYYY")}`,
+      pageWidth / 2,
+      y + 18,
+      { align: "center" }
+    );
+  }
+  doc.setDrawColor(220);
+  doc.line(14, y + 22, pageWidth - 14, y + 22);
+  doc.setTextColor(0);
+  y += 28;
+
+  const fmt = (value) => `$${Number(value || 0).toLocaleString("es-AR")}`;
+  const filas = (todosNegocios || []).map((n) => {
+    const saldoInicial = Number(n.saldoInicial || 0);
+    const ventas = Number(n.totalCompras || 0);
+    const pagos = Number(n.totalPagos || 0);
+    const nc = Number(n.totalNC || 0);
+    const saldo = ventas + saldoInicial - (pagos + nc);
+    return [
+      String(n.nombre || "-").trim(),
+      fmt(saldoInicial),
+      fmt(ventas),
+      fmt(pagos),
+      fmt(nc),
+      fmt(saldo),
+    ];
+  });
+
+  const totalVentasConSaldo = (totalVentas || 0) + (totalSaldoInicial || 0);
+  const totalSaldo = totalVentasConSaldo - (totalEntregas || 0) - (totalNotasCredito || 0);
+  filas.push([
+    "TOTAL",
+    fmt(totalSaldoInicial),
+    fmt(totalVentas),
+    fmt(totalEntregas),
+    fmt(totalNotasCredito),
+    fmt(totalSaldo),
+  ]);
+
+  autoTable(doc, {
+    head: [["Cliente", "Saldo inicial", "Ventas", "Pagos", "N.C.", "Saldo"]],
+    body: filas,
+    startY: y,
+    theme: "striped",
+    margin: { left: 14, right: 14 },
+    styles: { font: "helvetica", fontSize: 9, cellPadding: 2.2 },
+    headStyles: { fillColor: [225, 225, 225], textColor: 40, fontStyle: "bold", halign: "center" },
+    columnStyles: {
+      0: { cellWidth: 46, halign: "left" },
+      1: { cellWidth: 26, halign: "right" },
+      2: { cellWidth: 26, halign: "right" },
+      3: { cellWidth: 26, halign: "right" },
+      4: { cellWidth: 22, halign: "right" },
+      5: { cellWidth: 30, halign: "right", fontStyle: "bold" },
+    },
+    alternateRowStyles: { fillColor: [248, 248, 248] },
+    didParseCell: (d) => {
+      if (d.section === "body" && d.row.index === filas.length - 1) {
+        d.cell.styles.fillColor = [220, 235, 255];
+        d.cell.styles.fontStyle = "bold";
+      }
+    },
+  });
+
+  doc.setFontSize(8);
+  doc.setTextColor(120);
+  doc.setFont("helvetica", "normal");
+  doc.text("Verdulería Mi Familia · Documento informativo", pageWidth / 2, pageHeight - 8, { align: "center" });
+  doc.setTextColor(0);
+
+  const nombreArchivo = `diario-ventas-clientes-${dayjs().format("DDMMYYYY")}.pdf`;
+  doc.save(nombreArchivo);
+};
+
 const Estadisticas = () => {
   const [rango, setRango] = useState([defaultStart, defaultEnd]);
   const [loading, setLoading] = useState(true);
@@ -350,6 +456,10 @@ const Estadisticas = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [printingId, setPrintingId] = useState(null);
   const [printingGeneral, setPrintingGeneral] = useState(false);
+  const [printingDiario, setPrintingDiario] = useState(false);
+  const [diarioModalOpen, setDiarioModalOpen] = useState(false);
+  const [diarioPreset, setDiarioPreset] = useState("hoy");
+  const [diarioRango, setDiarioRango] = useState([dayjs(), dayjs()]);
 
   const cargarEstadisticas = async () => {
     if (!rango[0] || !rango[1]) return;
@@ -494,6 +604,82 @@ const Estadisticas = () => {
     }
   };
 
+  const resolverRangoDiario = () => {
+    const hoy = dayjs();
+    switch (diarioPreset) {
+      case "hoy":
+        return [hoy.startOf("day"), hoy.endOf("day")];
+      case "semana":
+        return [hoy.subtract(6, "day").startOf("day"), hoy.endOf("day")];
+      case "mes":
+        return [hoy.startOf("month"), hoy.endOf("day")];
+      case "cuatrimestre":
+        return [hoy.subtract(3, "month").startOf("month"), hoy.endOf("day")];
+      case "personalizado":
+        return [
+          diarioRango?.[0]?.startOf("day") || hoy.startOf("day"),
+          diarioRango?.[1]?.endOf("day") || hoy.endOf("day"),
+        ];
+      default:
+        return [hoy.startOf("day"), hoy.endOf("day")];
+    }
+  };
+
+  const handleGenerarDiario = async () => {
+    const [start, end] = resolverRangoDiario();
+    if (!start || !end) {
+      message.warning("Seleccioná un rango válido");
+      return;
+    }
+    setPrintingDiario(true);
+    try {
+      const startDate = start.format("YYYY-MM-DD");
+      const endDate = end.format("YYYY-MM-DD");
+      const res = await api(`api/estadisticas?startDate=${startDate}&endDate=${endDate}`);
+      const todosConSaldo = await Promise.all(
+        (res.todosNegocios || []).map(async (n) => {
+          try {
+            const saldoRes = await api(`api/saldos-iniciales/${n.negocioId}`).catch(() => null);
+            const fechaSaldo = saldoRes?.fechaCreacion ? dayjs(saldoRes.fechaCreacion) : null;
+            const enRango =
+              fechaSaldo &&
+              (fechaSaldo.isSame(start, "day") ||
+                (fechaSaldo.isAfter(start) && fechaSaldo.isBefore(end)) ||
+                fechaSaldo.isSame(end, "day"));
+            return { ...n, saldoInicial: enRango ? Number(saldoRes?.monto || 0) : 0 };
+          } catch {
+            return { ...n, saldoInicial: 0 };
+          }
+        })
+      );
+      const soloConCompras = todosConSaldo.filter((n) => Number(n.totalCompras || 0) > 0);
+      if (soloConCompras.length === 0) {
+        message.warning("No hay ventas en el período seleccionado");
+        return;
+      }
+      const totalSaldoInicial = soloConCompras.reduce((acc, n) => acc + Number(n.saldoInicial || 0), 0);
+      const totalVentas = soloConCompras.reduce((acc, n) => acc + Number(n.totalCompras || 0), 0);
+      const totalEntregas = soloConCompras.reduce((acc, n) => acc + Number(n.totalPagos || 0), 0);
+      const totalNotasCredito = soloConCompras.reduce((acc, n) => acc + Number(n.totalNC || 0), 0);
+
+      await generarPdfDiarioClientes({
+        todosNegocios: soloConCompras,
+        fechaInicio: start,
+        fechaFin: end,
+        totalVentas,
+        totalEntregas,
+        totalNotasCredito,
+        totalSaldoInicial,
+      });
+      message.success("PDF generado correctamente");
+      setDiarioModalOpen(false);
+    } catch (err) {
+      message.error(err?.message || "Error al generar el PDF");
+    } finally {
+      setPrintingDiario(false);
+    }
+  };
+
   const columnsClientes = [
     {
       title: "Cliente",
@@ -595,14 +781,22 @@ const Estadisticas = () => {
             allowClear={false}
           />
           {data && (
-            <Button
-              type="primary"
-              icon={<PrinterOutlined />}
-              onClick={handleImprimirGeneral}
-              loading={printingGeneral}
-            >
-              Imprimir general
-            </Button>
+            <>
+              <Button
+                type="primary"
+                icon={<PrinterOutlined />}
+                onClick={handleImprimirGeneral}
+                loading={printingGeneral}
+              >
+                Imprimir general
+              </Button>
+              <Button
+                onClick={() => setDiarioModalOpen(true)}
+                icon={<PrinterOutlined />}
+              >
+                Diario por cliente
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -778,6 +972,37 @@ const Estadisticas = () => {
           </Row>
         </>
       )}
+
+      <Modal
+        title="Diario de ventas por cliente"
+        open={diarioModalOpen}
+        onCancel={() => setDiarioModalOpen(false)}
+        onOk={handleGenerarDiario}
+        okText="Generar PDF"
+        confirmLoading={printingDiario}
+      >
+        <Radio.Group
+          value={diarioPreset}
+          onChange={(e) => setDiarioPreset(e.target.value)}
+          style={{ display: "flex", flexDirection: "column", gap: 8 }}
+        >
+          <Radio value="hoy">Hoy</Radio>
+          <Radio value="semana">Últimos 7 días</Radio>
+          <Radio value="mes">Mes actual</Radio>
+          <Radio value="cuatrimestre">Último cuatrimestre</Radio>
+          <Radio value="personalizado">Rango personalizado</Radio>
+        </Radio.Group>
+        {diarioPreset === "personalizado" && (
+          <div style={{ marginTop: 12 }}>
+            <DatePicker.RangePicker
+              value={diarioRango}
+              onChange={(dates) => dates && setDiarioRango(dates)}
+              format="DD/MM/YYYY"
+              allowClear={false}
+            />
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
