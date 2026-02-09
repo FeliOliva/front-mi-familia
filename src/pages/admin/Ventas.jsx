@@ -82,9 +82,10 @@ const getUnidadAbbr = (u) => {
 };
 const getStepByUnidad = (u) => {
   const U = (u || "").toUpperCase();
-  if (U === "KG") return 0.1;
-  return 1; // UNIDAD, CAJON, BOLSA
+  if (U === "KG" || U === "CAJ" || U === "CAJON") return 0.1;
+  return 1; // UNIDAD, BOLSA
 };
+const getMinByUnidad = () => 0.1;
 
 // Función para normalizar texto sin acentos
 const normalizarTexto = (texto) => {
@@ -112,7 +113,11 @@ const useIsMobile = () => {
   return isMobile;
 };
 const generarPDF = async (venta) => {
-  const detalles = Array.isArray(venta.detalles) ? venta.detalles : [];
+  const detalles = Array.isArray(venta.detalles)
+    ? venta.detalles
+    : Array.isArray(venta.detalleventa)
+      ? venta.detalleventa
+      : [];
   const n = detalles.length;
   const altoBase = 70,
     altoPorFila = 6,
@@ -257,6 +262,7 @@ const Ventas = () => {
   const [loadingCajas, setLoadingCajas] = useState(false);
   const [filtroCaja, setFiltroCaja] = useState("todas");
   const [observacion, setObservacion] = useState("");
+  const observacionRef = useRef("");
 
   // Búsqueda de ventas por nroVenta
   const [busquedaVenta, setBusquedaVenta] = useState("");
@@ -287,6 +293,7 @@ const Ventas = () => {
   const cartEffectInitialized = useRef(false);
   const inputBuscadorRef = useRef(null);
   const inputCantidadRef = useRef(null);
+  const selectNegocioRef = useRef(null);
   const [productoPreseleccionado, setProductoPreseleccionado] = useState(null);
   const [indiceLista, setIndiceLista] = useState(-1); // índice del producto resaltado en la lista
   const cargarProductos = async () => {
@@ -542,6 +549,36 @@ const Ventas = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [modalVisible, selectedNegocio, selectedCaja, productosSeleccionados, negocios]);
 
+  // Atajo F4 para abrir nueva venta
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "F4") {
+        e.preventDefault();
+        if (modalVisible) return;
+        setModalVisible(true);
+        setObservacion("");
+        observacionRef.current = "";
+        if (!ventaEditando && productosSeleccionados.length === 0) {
+          const draft = readCartDraft();
+          if (Array.isArray(draft) && draft.length) {
+            setProductosSeleccionados(draft.map(normalizeDraftItem));
+          }
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [modalVisible, ventaEditando, productosSeleccionados.length]);
+
+  // Al abrir el modal, enfocar el select de Negocio
+  useEffect(() => {
+    if (!modalVisible) return;
+    const t = setTimeout(() => {
+      selectNegocioRef.current?.focus?.();
+    }, 200);
+    return () => clearTimeout(t);
+  }, [modalVisible]);
+
   const agregarProducto = (producto, volverAlBuscador = true) => {
     if (!cantidad || cantidad <= 0) {
       message.warning("La cantidad debe ser mayor a 0");
@@ -665,12 +702,17 @@ const Ventas = () => {
       const rolUsuario = parseInt(localStorage.getItem("rol") || "0");
 
       // Payload base, común a crear y editar
+      const textoObservacion = observacionRef.current ?? observacion ?? "";
+      const observacionFinal =
+        textoObservacion !== "" && String(textoObservacion).trim() !== ""
+          ? String(textoObservacion).trim().toUpperCase()
+          : null;
       const payloadBase = {
         nroVenta,
         negocioId: parseInt(selectedNegocio),
         cajaId: parseInt(selectedCaja),
         detalles,
-        observacion: observacion?.trim().toUpperCase() || null,
+        observacion: observacionFinal,
       };
 
       if (ventaEditando) {
@@ -679,12 +721,22 @@ const Ventas = () => {
         message.success("Venta editada con éxito");
       } else {
         // 🔹 CREAR VENTA
-        await api("api/ventas", "POST", {
+        const ventaCreada = await api("api/ventas", "POST", {
           ...payloadBase,
           rol_usuario: rolUsuario,
           usuarioId,
         });
         message.success("Venta guardada con éxito");
+        try {
+          const ventaCompleta = await api(`api/ventas/${ventaCreada.id}`);
+          const ventaParaPDF = {
+            ...ventaCompleta,
+            detalles: ventaCompleta.detalleventa ?? ventaCompleta.detalles ?? [],
+          };
+          await generarPDF(ventaParaPDF);
+        } catch (errPdf) {
+          console.warn("No se pudo generar el PDF automático:", errPdf);
+        }
       }
 
       // limpiar estado local
@@ -714,7 +766,9 @@ const Ventas = () => {
 
       setSelectedNegocio(venta.negocioId || venta.negocio?.id);
       setSelectedCaja(venta.cajaId || null);
-      setObservacion(venta.observacion || "");
+      const obsInicial = venta.observacion || "";
+      setObservacion(obsInicial);
+      observacionRef.current = obsInicial;
 
       const detalles = venta.detalles || [];
 
@@ -1053,16 +1107,11 @@ const Ventas = () => {
               onClick={() => modificarCantidad(index, -0.5)} // Cambiar incremento
             />
             <InputNumber
-              min={getStepByUnidad(item._unidad || item.tipoUnidad || "UNIDAD")}
+              min={getMinByUnidad()}
               step={getStepByUnidad(
                 item._unidad || item.tipoUnidad || "UNIDAD"
               )}
-              precision={
-                (item._unidad || item.tipoUnidad || "UNIDAD").toUpperCase() ===
-                  "KG"
-                  ? 2
-                  : 0
-              }
+              precision={2}
               value={item.cantidad}
               onChange={(value) => actualizarCantidad(index, value)}
               size={isMobile ? "middle" : "large"}
@@ -1089,6 +1138,7 @@ const Ventas = () => {
     setModalVisible(false);
     setVentaEditando(null);
     setObservacion("");
+    observacionRef.current = "";
   };
   const ventasFiltradas =
     filtroCaja === "todas"
@@ -1108,6 +1158,7 @@ const Ventas = () => {
             onClick={() => {
               setModalVisible(true);
               setObservacion("");
+              observacionRef.current = "";
               // si NO es edición de venta, carga el borrador si existe
               if (!ventaEditando && productosSeleccionados.length === 0) {
                 const draft = readCartDraft();
@@ -1123,7 +1174,7 @@ const Ventas = () => {
         </div>
         <div className="px-4 py-4 flex flex-col gap-3">
           <Input
-            placeholder="Buscar por número de venta"
+            placeholder="Buscar por nombre de negocio o número de venta"
             value={busquedaVenta}
             onChange={(e) => {
               setBusquedaVenta(e.target.value);
@@ -1210,7 +1261,7 @@ const Ventas = () => {
         onCancel={handleCerrarModal}
         footer={[
           <span key="hint" style={{ float: "left", color: "#888", fontSize: 12, lineHeight: "32px" }}>
-            💡 Presioná <kbd style={{ background: "#f0f0f0", padding: "2px 6px", borderRadius: 4, border: "1px solid #d9d9d9" }}>F2</kbd> para finalizar rápido
+            💡 <kbd style={{ background: "#f0f0f0", padding: "2px 6px", borderRadius: 4, border: "1px solid #d9d9d9" }}>F2</kbd> para finalizar rápido · <kbd style={{ background: "#f0f0f0", padding: "2px 6px", borderRadius: 4, border: "1px solid #d9d9d9" }}>F4</kbd> nueva venta
           </span>,
           <Button key="cancelar" onClick={handleCerrarModal}>
             Cancelar
@@ -1248,6 +1299,7 @@ const Ventas = () => {
               <Col span={isMobile ? 24 : 12}>
                 <Form.Item label="Negocio" style={{ marginBottom: 0 }}>
                   <Select
+                    ref={selectNegocioRef}
                     showSearch
                     placeholder="Buscar y seleccionar negocio"
                     value={selectedNegocio}
@@ -1308,8 +1360,12 @@ const Ventas = () => {
                 <Form.Item label="Observación (opcional)" style={{ marginBottom: 0 }}>
                   <Input.TextArea
                     placeholder="Escribí una observación"
-                    value={observacion}
-                    onChange={(e) => setObservacion(e.target.value)}
+                  value={observacion}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setObservacion(v);
+                    observacionRef.current = v;
+                  }}
                     autoSize={{ minRows: 2, maxRows: 4 }}
                   />
                 </Form.Item>

@@ -12,6 +12,8 @@ import {
   BookOutlined,
   OrderedListOutlined,
   MoneyCollectOutlined,
+  BankOutlined,
+  LineChartOutlined,
 } from "@ant-design/icons";
 import { Layout, Menu, Button, theme, Drawer } from "antd";
 import { Link, Outlet, useLocation } from "react-router-dom";
@@ -62,6 +64,10 @@ const MainLayout = () => {
         return "Cierre de Caja";
       case "/gastos":
         return "Gastos";
+      case "/cheques":
+        return "Cheques";
+      case "/estadisticas":
+        return "Estadísticas";
       case "/entregas-encargado":
         return "EntregaEncargado";
       default:
@@ -127,6 +133,23 @@ const MainLayout = () => {
                 Gastos
               </Link>
             </Menu.Item>
+            <Menu.Item key="/cheques" icon={<BankOutlined />}>
+              <Link
+                to="/cheques"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Cheques
+              </Link>
+            </Menu.Item>
+            <Menu.Item key="/estadisticas" icon={<LineChartOutlined />}>
+              <Link
+                to="/estadisticas"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Estadísticas
+              </Link>
+            </Menu.Item>
+            {/* Cierre de Caja siempre al final del menú */}
             <Menu.Item key="/caja" icon={<UserOutlined />}>
               <Link
                 to="/caja"
@@ -186,6 +209,14 @@ const MainLayout = () => {
                 onClick={() => isMobile && setMobileDrawerOpen(false)}
               >
                 Gastos
+              </Link>
+            </Menu.Item>
+            <Menu.Item key="/cheques" icon={<BankOutlined />}>
+              <Link
+                to="/cheques"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Cheques
               </Link>
             </Menu.Item>
             {/* <Menu.Item key="/cierre-caja-encargado" icon={<UserOutlined />}>

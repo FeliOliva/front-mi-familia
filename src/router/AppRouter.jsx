@@ -17,6 +17,8 @@ import Entregas from "../pages/repartidor/Entregas";
 import MainLayout from "../components/layout/Sidebar"; // Ajusta el path si es necesario
 import Caja from "../pages/admin/Caja";
 import Gastos from "../pages/admin/Gastos";
+import Cheques from "../pages/admin/Cheques";
+import Estadisticas from "../pages/admin/Estadisticas";
 // import EntregaEncargado from "../pages/encargadoVenta/EntregaEncargado";
 // import CierreCajaEncargado from "../pages/encargadoVenta/cierreCaja";
 
@@ -81,6 +83,8 @@ const AppRouter = () => {
                     <Route path="caja" element={<Caja />} />
                     <Route path="pedidos" element={<Pedidos />} />
                     <Route path="gastos" element={<Gastos />} />
+                    <Route path="cheques" element={<Cheques />} />
+                    <Route path="estadisticas" element={<Estadisticas />} />
                   </>
                 )}
 
@@ -96,6 +100,7 @@ const AppRouter = () => {
                     /> */}
                     <Route path="resumenes" element={<Resumenes />} />
                     <Route path="gastos" element={<Gastos />} />
+                    <Route path="cheques" element={<Cheques />} />
                     <Route path="*" element={<Navigate to="/ventas" />} />
                   </>
                 )}

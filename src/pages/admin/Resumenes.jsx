@@ -78,6 +78,57 @@ const getImageAsDataUrl = (url) =>
       .catch(reject);
   });
 
+/** PDF Nota de Crédito en formato ticket 80mm (para enviar o imprimir en ticketera) */
+const generarPDFNotaCredito = (nota, negocioNombre = "") => {
+  if (!nota) return;
+  const nf = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
+  const motivo = String(nota.motivo || "-").trim();
+  const doc = new jsPDF({ orientation: "p", unit: "mm", format: [80, 180] });
+  doc.setFontSize(8);
+  const lineasMotivo = doc.splitTextToSize(motivo, 70);
+  let y = 8;
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text("VERDULERIA MI FAMILIA", 40, y, { align: "center" });
+  y += 5;
+  doc.setFontSize(10);
+  doc.text("NOTA DE CRÉDITO", 40, y, { align: "center" });
+  y += 6;
+  doc.setFontSize(8.5);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Fecha: ${dayjs(nota.fechaCreacion).format("DD/MM/YYYY")}`, 6, y);
+  y += 4.2;
+  if (negocioNombre) {
+    doc.setFont("helvetica", "bold");
+    doc.text(negocioNombre.substring(0, 35), 6, y);
+    y += 4.2;
+    doc.setFont("helvetica", "normal");
+  }
+  doc.setLineWidth(0.2);
+  doc.line(4, y, 76, y);
+  y += 4;
+  doc.setFont("helvetica", "bold");
+  doc.text("Motivo:", 6, y);
+  y += 4.2;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  lineasMotivo.forEach((linea) => {
+    doc.text(linea, 6, y);
+    y += 4.2;
+  });
+  y += 3;
+  doc.line(4, y, 76, y);
+  y += 5;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text(`MONTO: $${nf.format(nota.monto || 0)}`, 40, y, { align: "center" });
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text("Documento informativo - Verdulería Mi Familia", 40, y, { align: "center" });
+  doc.save(`nota-credito-${nota.id}-${dayjs().format("DDMMYYYY")}.pdf`);
+};
+
 const prepararTransacciones = (raw) => {
   const base = (raw || []).map((item) => {
     const fecha = item.fecha || item.fechaCreacion || new Date().toISOString();
@@ -174,6 +225,7 @@ const VentasPorNegocio = () => {
   const [editingRecord, setEditingRecord] = useState(null);
   const [editMonto, setEditMonto] = useState(null);
   const [editMetodoPago, setEditMetodoPago] = useState(null);
+  const [editMotivo, setEditMotivo] = useState("");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [filterDrawerVisible, setFilterDrawerVisible] = useState(false);
@@ -373,8 +425,9 @@ const VentasPorNegocio = () => {
           return;
         }
         res = await api(`api/notasCredito/${record.id}`);
-        setEditingRecord(res);
+        setEditingRecord({ ...res, tipo: "Nota de Crédito" });
         setEditMonto(res.monto);
+        setEditMotivo(res.motivo ?? "");
       } else if (record.tipo === "Saldo Inicial" || record.esSaldoInicial) {
         // Para saldo inicial, abrir el modal específico
         openSaldoInicialModal();
@@ -409,14 +462,21 @@ const VentasPorNegocio = () => {
           metodoPagoId: editMetodoPago,
         });
       } else if (editingRecord.tipo === "Nota de Crédito") {
+        const motivoTrim = editMotivo != null ? String(editMotivo).trim() : "";
+        if (!motivoTrim) {
+          message.error("El motivo de la nota de crédito es obligatorio");
+          return;
+        }
         await api(`api/notasCredito/${editingRecord.id}`, "PUT", {
-          monto: montoNum,
+          monto: Math.round(montoNum),
+          motivo: motivoTrim,
         });
       }
       message.success("Registro actualizado correctamente");
       setIsEditModalOpen(false);
       setEditMonto(null);
       setEditMetodoPago(null);
+      setEditMotivo("");
       obtenerResumen();
     } catch (err) {
       const errorMsg = err?.response?.data?.error || err?.message || "Error al actualizar el registro";
@@ -565,6 +625,8 @@ const VentasPorNegocio = () => {
         }
         const res = await api(`api/notasCredito/${id}`);
         const nota = res;
+        const negocioNombre =
+          negocios.find((n) => n.id === (record.negocioId ?? negocioSeleccionado))?.nombre ?? "";
         setModalTitle("Detalle de Nota de Crédito");
         setModalContent(
           <div className="text-sm">
@@ -572,12 +634,24 @@ const VentasPorNegocio = () => {
               <strong>Motivo:</strong> {nota.motivo}
             </p>
             <p>
-              <strong>Monto:</strong> ${nota.monto.toLocaleString("es-AR")}
+              <strong>Monto:</strong> ${(nota.monto || 0).toLocaleString("es-AR")}
             </p>
             <p>
               <strong>Fecha:</strong>{" "}
               {dayjs(nota.fechaCreacion).format("DD/MM/YYYY")}
             </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                type="primary"
+                icon={<PrinterOutlined />}
+                onClick={() => {
+                  generarPDFNotaCredito(nota, negocioNombre);
+                  message.success("Descargado correctamente.");
+                }}
+              >
+                Descargar Nota de Crédito
+              </Button>
+            </div>
           </div>
         );
       } else if (tipo === "Venta") {
@@ -588,16 +662,20 @@ const VentasPorNegocio = () => {
         }
         const res = await api(`api/ventas/${ventaIdFinal}`);
         const venta = res;
+        const detallesVenta = venta?.detalleventa || venta?.detalles || [];
 
-        if (!venta || !venta.detalles || venta.detalles.length === 0) {
+        if (!venta || detallesVenta.length === 0) {
           message.warning("La venta no tiene detalles disponibles");
           return;
         }
 
-        setDetalleSeleccionado(venta.detalles);
+        setDetalleSeleccionado(detallesVenta);
         setModalTitle("Detalle de Venta");
         setModalContent(
           <div className="text-sm">
+            <p>
+              <strong>N° Venta:</strong> {venta.nroVenta || "-"}
+            </p>
             <p>
               <strong>Total:</strong> ${(venta.total || 0).toLocaleString("es-AR")}
             </p>
@@ -605,15 +683,18 @@ const VentasPorNegocio = () => {
               <strong>Fecha:</strong>{" "}
               {dayjs(venta.fechaCreacion || venta.fecha).format("DD/MM/YYYY")}
             </p>
+            {venta.observacion && (
+              <p><strong>Observación:</strong> {venta.observacion}</p>
+            )}
             <p>
               <strong>Productos:</strong>
             </p>
             <ul className="list-disc pl-5">
-              {venta.detalles.map((d) => (
+              {detallesVenta.map((d) => (
                 <li key={d.id || d.productoId} className="mb-1">
-                  {d.producto?.nombre || d.nombreProducto || "Producto sin nombre"} - {d.cantidad} u. x $
-                  {d.precio.toLocaleString("es-AR")} = $
-                  {(d.subTotal || d.precio * d.cantidad).toLocaleString("es-AR")}
+                  {d.producto?.nombre || d.nombreProducto || "Producto sin nombre"} - {Number(d.cantidad)} x $
+                  {(d.precio || 0).toLocaleString("es-AR")} = $
+                  {(d.subTotal ?? (d.precio || 0) * Number(d.cantidad || 0)).toLocaleString("es-AR")}
                 </li>
               ))}
             </ul>
@@ -819,7 +900,6 @@ const VentasPorNegocio = () => {
                 icon={<EditOutlined />}
                 onClick={() => handleEditar(record)}
                 size="small"
-                disabled={record.tipo === "Nota de Crédito"}
               />
               <Button
                 danger
@@ -880,7 +960,6 @@ const VentasPorNegocio = () => {
               <Button
                 icon={<EditOutlined />}
                 onClick={() => handleEditar(record)}
-                disabled={record.tipo === "Nota de Crédito"}
               />
               <Button
                 danger
@@ -923,19 +1002,20 @@ const VentasPorNegocio = () => {
     } catch (e) {}
 
     /* =========================
-       TÍTULO
+       TÍTULO (centrado)
     ========================= */
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0);
     doc.text(
       `Resumen del cliente ${negocio?.nombre || "-"}`,
-      14,
-      y + 10
+      pageWidth / 2,
+      y + 10,
+      { align: "center" }
     );
 
     /* =========================
-       PERÍODO (SIN BARRA OSCURA)
+       PERÍODO (centrado)
     ========================= */
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
@@ -944,8 +1024,9 @@ const VentasPorNegocio = () => {
     if (fechaInicio && fechaFin) {
       doc.text(
         `Período: ${dayjs(fechaInicio).format("DD-MM-YYYY")} a ${dayjs(fechaFin).format("DD-MM-YYYY")}`,
-        14,
-        y + 18
+        pageWidth / 2,
+        y + 18,
+        { align: "center" }
       );
     }
 
@@ -981,18 +1062,25 @@ const VentasPorNegocio = () => {
       const tipoAbrev = item.tipo === "Nota de Crédito" ? "N.C." : item.tipo;
       const signo = item.tipo === "Venta" ? "" : "-";
       const detalle = item.esSaldoInicial ? "Saldo Inicial" : tipoAbrev;
+      const obsMotivo =
+        item.tipo === "Venta"
+          ? (item.observacion && String(item.observacion).trim()) || "-"
+          : item.tipo === "Nota de Crédito"
+            ? (item.motivo && String(item.motivo).trim()) || "-"
+            : "-";
 
       return [
         dayjs(item.fecha).format("DD/MM/YY"),
         detalle,
         item.numero || "-",
+        obsMotivo,
         `${signo}$${item.monto_formateado}`,
         `$${item.saldo_restante?.toLocaleString("es-AR") || "0"}`,
       ];
     });
 
     autoTable(doc, {
-      head: [["Fecha", "Detalle", "Nro", "Monto", "Saldo"]],
+      head: [["Fecha", "Detalle", "Nro", "Obs. / Motivo", "Monto", "Saldo"]],
       body: tableData,
       startY: y,
       theme: "striped",
@@ -1009,11 +1097,12 @@ const VentasPorNegocio = () => {
         halign: "center",
       },
       columnStyles: {
-        0: { cellWidth: 22, halign: "center" },
-        1: { cellWidth: 52, halign: "left" },
-        2: { cellWidth: 22, halign: "center" },
-        3: { cellWidth: 32, halign: "right" },
-        4: { cellWidth: 32, halign: "right", fontStyle: "bold" },
+        0: { cellWidth: 20, halign: "center" },
+        1: { cellWidth: 28, halign: "center" },
+        2: { cellWidth: 20, halign: "center" },
+        3: { cellWidth: 44, halign: "center" },
+        4: { cellWidth: 28, halign: "right" },
+        5: { cellWidth: 28, halign: "right", fontStyle: "bold" },
       },
       alternateRowStyles: { fillColor: [248, 248, 248] },
     });
@@ -1033,14 +1122,15 @@ const VentasPorNegocio = () => {
 
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text("Resumen de cuenta", 14, ry);
+    doc.text("Resumen de cuenta", pageWidth / 2, ry, { align: "center" });
 
     ry += 8;
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
 
-    const leftX = 18;
-    const rightX = pageWidth - 18;
+    const blockWidth = 70;
+    const leftX = pageWidth / 2 - blockWidth / 2;
+    const rightX = pageWidth / 2 + blockWidth / 2;
 
     const row = (label, value) => {
       doc.text(label, leftX, ry);
@@ -1054,7 +1144,7 @@ const VentasPorNegocio = () => {
     row("Notas de crédito", `-$${totalNC.toLocaleString("es-AR")}`);
 
     /* =========================
-       SALDO PENDIENTE
+       SALDO PENDIENTE (centrado)
     ========================= */
     ry += 6;
     doc.setFillColor(238, 248, 240);
@@ -1062,10 +1152,10 @@ const VentasPorNegocio = () => {
 
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text("Saldo pendiente", 18, ry + 9);
+    doc.text("Saldo pendiente", pageWidth / 2 - 35, ry + 9);
     doc.text(
       `$${saldoPendiente.toLocaleString("es-AR")}`,
-      pageWidth - 18,
+      pageWidth / 2 + 35,
       ry + 9,
       { align: "right" }
     );
@@ -1347,7 +1437,7 @@ const VentasPorNegocio = () => {
         </Drawer>
       )}
 
-      {/* Modal para editar venta */}
+      {/* Modal para editar venta / entrega / nota de crédito */}
       {!isMobile ? (
         <Modal
           title="Editar"
@@ -1356,6 +1446,7 @@ const VentasPorNegocio = () => {
             setIsEditModalOpen(false);
             setEditMonto(null);
             setEditMetodoPago(null);
+            setEditMotivo("");
           }}
           onOk={guardarEdicion}
           okText="Guardar"
@@ -1366,7 +1457,9 @@ const VentasPorNegocio = () => {
               <strong>Numero:</strong>{" "}
               {editingRecord?.nroVenta ||
                 editingRecord?.nroEntrega ||
-                editingRecord?.nroNotaCredito ||
+                (editingRecord?.tipo === "Nota de Crédito"
+                  ? `NC-${editingRecord?.id ?? ""}`
+                  : editingRecord?.nroNotaCredito) ||
                 "-"}
             </p>
             <p>
@@ -1384,6 +1477,18 @@ const VentasPorNegocio = () => {
                 style={{ width: "100%" }}
               />
             </div>
+            {editingRecord?.tipo === "Nota de Crédito" && (
+              <div>
+                <label>Motivo</label>
+                <Input.TextArea
+                  value={editMotivo ?? ""}
+                  onChange={(e) => setEditMotivo(e.target.value)}
+                  rows={3}
+                  placeholder="Motivo de la nota de crédito"
+                  style={{ width: "100%" }}
+                />
+              </div>
+            )}
             {editingRecord?.tipo === "Entrega" && (
               <div>
                 <label>Método de Pago</label>
@@ -1406,15 +1511,22 @@ const VentasPorNegocio = () => {
         </Modal>
       ) : (
         <Drawer
-          title={editingRecord?.tipo === "Entrega" ? "Editar entrega" : "Editar monto de venta"}
+          title={
+            editingRecord?.tipo === "Entrega"
+              ? "Editar entrega"
+              : editingRecord?.tipo === "Nota de Crédito"
+                ? "Editar nota de crédito"
+                : "Editar monto de venta"
+          }
           open={isEditModalOpen}
           onClose={() => {
             setIsEditModalOpen(false);
             setEditMonto(null);
             setEditMetodoPago(null);
+            setEditMotivo("");
           }}
           placement="bottom"
-          height={editingRecord?.tipo === "Entrega" ? "60%" : "50%"}
+          height={editingRecord?.tipo === "Entrega" ? "60%" : editingRecord?.tipo === "Nota de Crédito" ? "55%" : "50%"}
           extra={
             <Button type="primary" onClick={guardarEdicion}>
               Guardar
@@ -1426,7 +1538,9 @@ const VentasPorNegocio = () => {
               <strong>Numero:</strong>{" "}
               {editingRecord?.nroVenta ||
                 editingRecord?.nroEntrega ||
-                editingRecord?.nroNotaCredito ||
+                (editingRecord?.tipo === "Nota de Crédito"
+                  ? `NC-${editingRecord?.id ?? ""}`
+                  : editingRecord?.nroNotaCredito) ||
                 "-"}
             </p>
             <p>
@@ -1444,6 +1558,18 @@ const VentasPorNegocio = () => {
                 style={{ width: "100%" }}
               />
             </div>
+            {editingRecord?.tipo === "Nota de Crédito" && (
+              <div>
+                <label>Motivo</label>
+                <Input.TextArea
+                  value={editMotivo ?? ""}
+                  onChange={(e) => setEditMotivo(e.target.value)}
+                  rows={3}
+                  placeholder="Motivo de la nota de crédito"
+                  style={{ width: "100%" }}
+                />
+              </div>
+            )}
             {editingRecord?.tipo === "Entrega" && (
               <div>
                 <label>Método de Pago</label>
@@ -1829,11 +1955,30 @@ const VentasPorNegocio = () => {
                 Ver detalle
               </Button>
 
+              {selectedRecord?.tipo === "Nota de Crédito" && (
+                <Button
+                  icon={<PrinterOutlined />}
+                  onClick={async () => {
+                    try {
+                      const nota = await api(`api/notasCredito/${selectedRecord.id}`);
+                      const negocioNombre =
+                        negocios.find((n) => n.id === (selectedRecord.negocioId ?? negocioSeleccionado))?.nombre ?? "";
+                      generarPDFNotaCredito(nota, negocioNombre);
+                      message.success("Descarga Completada.");
+                    } catch (err) {
+                      message.error("Error al generar el PDF: " + (err.message || ""));
+                    }
+                  }}
+                  style={{ width: "100%" }}
+                >
+                  Imprimir PDF / Ticket
+                </Button>
+              )}
+
               <Button
                 icon={<EditOutlined />}
                 onClick={() => handleEditar(selectedRecord)}
                 style={{ width: "100%" }}
-                disabled={selectedRecord?.tipo === "Nota de Crédito"}
               >
                 Editar
               </Button>
