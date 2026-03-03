@@ -12,6 +12,7 @@ import {
   Button,
   Modal,
   Radio,
+  Select,
 } from "antd";
 import {
   DollarOutlined,
@@ -31,6 +32,22 @@ const defaultEnd = dayjs();
 
 const formatMoneda = (value) =>
   `$${Number(value || 0).toLocaleString("es-AR")}`;
+
+const formatCantidadPorUnidad = (cantidad, unidadTipo) => {
+  const num = Number(cantidad || 0);
+  const unidad = String(unidadTipo || "").toLowerCase();
+  const esKg = unidad.includes("kg") || unidad.includes("kilo");
+
+  if (esKg) {
+    return Math.ceil(num).toLocaleString("es-AR");
+  }
+
+  if (num % 1 === 0) {
+    return num.toLocaleString("es-AR");
+  }
+
+  return Number(num.toFixed(3)).toLocaleString("es-AR");
+};
 
 const getImageAsDataUrl = (url) =>
   new Promise((resolve, reject) => {
@@ -345,6 +362,200 @@ const generarPdfResumenGeneral = async ({
   doc.save(nombreArchivo);
 };
 
+const generarPdfResumenVentasPorUnidades = async ({
+  productosVendidos,
+  fechaInicio,
+  fechaFin,
+  totalSubtotal,
+  cajaLabel,
+}) => {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let y = 16;
+
+  try {
+    const logoUrl = `${window.location.origin}/logoverdu.png`;
+    const logoDataUrl = await getImageAsDataUrl(logoUrl);
+    if (logoDataUrl) doc.addImage(logoDataUrl, "PNG", pageWidth - 50, y - 16, 38, 38);
+  } catch (e) {}
+
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0);
+  doc.text("Resumen diario de ventas por unidades", pageWidth / 2, y + 10, { align: "center" });
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(90);
+  if (fechaInicio && fechaFin) {
+    doc.text(
+      `Período: ${dayjs(fechaInicio).format("DD-MM-YYYY")} a ${dayjs(fechaFin).format("DD-MM-YYYY")}`,
+      pageWidth / 2,
+      y + 18,
+      { align: "center" }
+    );
+  }
+  if (cajaLabel) {
+    doc.text(`Caja: ${cajaLabel}`, pageWidth / 2, y + 24, { align: "center" });
+  }
+  doc.setDrawColor(220);
+  doc.line(14, y + 28, pageWidth - 14, y + 28);
+  doc.setTextColor(0);
+  y += 34;
+
+  const fmt = (value) => `$${Number(value || 0).toLocaleString("es-AR")}`;
+  const filas = productosVendidos.map((p) => {
+    const precioInfo = [];
+    if (p.precioMin !== null && p.precioMax !== null) {
+      precioInfo.push(`Min: ${fmt(p.precioMin)}`);
+      precioInfo.push(`Max: ${fmt(p.precioMax)}`);
+    }
+    precioInfo.push(`Prom: ${fmt(Math.round(p.precioPromedio))}`);
+
+    return [
+      p.productoNombre,
+      formatCantidadPorUnidad(p.cantidadTotal, p.unidadTipo),
+      p.unidadTipo,
+      precioInfo.join(" / "),
+      fmt(p.subtotal),
+    ];
+  });
+
+  filas.push([
+    "TOTAL",
+    "",
+    "",
+    "",
+    fmt(totalSubtotal),
+  ]);
+
+  autoTable(doc, {
+    head: [["Producto", "Cantidad", "Unidad", "Precios", "Subtotal"]],
+    body: filas,
+    startY: y,
+    theme: "striped",
+    margin: { left: 14, right: 14 },
+    styles: { font: "helvetica", fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [225, 225, 225], textColor: 40, fontStyle: "bold", halign: "center" },
+    columnStyles: {
+      0: { cellWidth: 50, halign: "left" },
+      1: { cellWidth: 25, halign: "right" },
+      2: { cellWidth: 25, halign: "center" },
+      3: { cellWidth: 50, halign: "left", fontSize: 7 },
+      4: { cellWidth: 30, halign: "right", fontStyle: "bold" },
+    },
+    alternateRowStyles: { fillColor: [248, 248, 248] },
+    didParseCell: (d) => {
+      if (d.section === "body" && d.row.index === filas.length - 1) {
+        d.cell.styles.fillColor = [220, 235, 255];
+        d.cell.styles.fontStyle = "bold";
+      }
+    },
+  });
+
+  doc.setFontSize(8);
+  doc.setTextColor(120);
+  doc.setFont("helvetica", "normal");
+  doc.text("Verdulería Mi Familia · Documento informativo", pageWidth / 2, pageHeight - 8, { align: "center" });
+  doc.setTextColor(0);
+
+  const nombreArchivo = `resumen-ventas-por-unidades-${dayjs().format("DDMMYYYY")}.pdf`;
+  doc.save(nombreArchivo);
+};
+
+const generarPdfProductosPorCliente = async ({
+  productos,
+  fechaInicio,
+  fechaFin,
+  totalSubtotal,
+  cajaLabel,
+}) => {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let y = 16;
+
+  try {
+    const logoUrl = `${window.location.origin}/logoverdu.png`;
+    const logoDataUrl = await getImageAsDataUrl(logoUrl);
+    if (logoDataUrl) doc.addImage(logoDataUrl, "PNG", pageWidth - 50, y - 16, 38, 38);
+  } catch (e) {}
+
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0);
+  doc.text("Diario por producto y cliente", pageWidth / 2, y + 10, { align: "center" });
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(90);
+  if (fechaInicio && fechaFin) {
+    doc.text(
+      `Período: ${dayjs(fechaInicio).format("DD-MM-YYYY")} a ${dayjs(fechaFin).format("DD-MM-YYYY")}`,
+      pageWidth / 2,
+      y + 18,
+      { align: "center" }
+    );
+  }
+  if (cajaLabel) {
+    doc.text(`Caja: ${cajaLabel}`, pageWidth / 2, y + 24, { align: "center" });
+  }
+  doc.setDrawColor(220);
+  doc.line(14, y + 28, pageWidth - 14, y + 28);
+  doc.setTextColor(0);
+  y += 34;
+
+  const fmt = (value) => `$${Number(value || 0).toLocaleString("es-AR")}`;
+
+  const filas = [];
+  (productos || []).forEach((p) => {
+    const clientes = p.clientes || [];
+    clientes.forEach((c, idx) => {
+      filas.push([
+        idx === 0 ? p.productoNombre : "",
+        idx === 0 ? p.unidadTipo : "",
+        formatCantidadPorUnidad(c.cantidadTotal, p.unidadTipo),
+        c.clienteNombre,
+        fmt(c.subtotal),
+      ]);
+    });
+    filas.push(["", "", "", "", ""]);
+  });
+
+  autoTable(doc, {
+    head: [["Producto", "Unidad", "Cantidad", "Cliente", "Subtotal"]],
+    body: filas,
+    startY: y,
+    theme: "striped",
+    margin: { left: 14, right: 14 },
+    styles: { font: "helvetica", fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [225, 225, 225], textColor: 40, fontStyle: "bold", halign: "center" },
+    columnStyles: {
+      0: { cellWidth: 42, halign: "left" },
+      1: { cellWidth: 20, halign: "center" },
+      2: { cellWidth: 20, halign: "right" },
+      3: { cellWidth: 70, halign: "left" },
+      4: { cellWidth: 30, halign: "right", fontStyle: "bold" },
+    },
+    alternateRowStyles: { fillColor: [248, 248, 248] },
+  });
+
+  const finalY = (doc.lastAutoTable?.finalY || y) + 8;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text(`TOTAL GENERAL: ${fmt(totalSubtotal)}`, pageWidth - 14, finalY, { align: "right" });
+
+  doc.setFontSize(8);
+  doc.setTextColor(120);
+  doc.setFont("helvetica", "normal");
+  doc.text("Verdulería Mi Familia · Documento informativo", pageWidth / 2, pageHeight - 8, { align: "center" });
+  doc.setTextColor(0);
+
+  const nombreArchivo = `diario-producto-clientes-${dayjs().format("DDMMYYYY")}.pdf`;
+  doc.save(nombreArchivo);
+};
+
 const generarPdfDiarioClientes = async ({
   todosNegocios,
   fechaInicio,
@@ -451,15 +662,33 @@ const generarPdfDiarioClientes = async ({
 
 const Estadisticas = () => {
   const [rango, setRango] = useState([defaultStart, defaultEnd]);
+  const [rangoProductos, setRangoProductos] = useState([defaultStart, defaultEnd]);
+  const [cajas, setCajas] = useState([]);
+  const [cajaFiltroProductos, setCajaFiltroProductos] = useState("all");
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [productosVendidos, setProductosVendidos] = useState(null);
+  const [loadingProductos, setLoadingProductos] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [printingId, setPrintingId] = useState(null);
   const [printingGeneral, setPrintingGeneral] = useState(false);
   const [printingDiario, setPrintingDiario] = useState(false);
+  const [printingProductos, setPrintingProductos] = useState(false);
+  const [printingProductosClientes, setPrintingProductosClientes] = useState(false);
   const [diarioModalOpen, setDiarioModalOpen] = useState(false);
   const [diarioPreset, setDiarioPreset] = useState("hoy");
   const [diarioRango, setDiarioRango] = useState([dayjs(), dayjs()]);
+  const [diarioProductosModalOpen, setDiarioProductosModalOpen] = useState(false);
+  const [diarioProductosPreset, setDiarioProductosPreset] = useState("hoy");
+  const [diarioProductosRango, setDiarioProductosRango] = useState([dayjs(), dayjs()]);
+  const [diarioProductosClientesModalOpen, setDiarioProductosClientesModalOpen] = useState(false);
+  const [diarioProductosClientesPreset, setDiarioProductosClientesPreset] = useState("hoy");
+  const [diarioProductosClientesRango, setDiarioProductosClientesRango] = useState([dayjs(), dayjs()]);
+
+  const cajaFiltroProductosLabel =
+    cajaFiltroProductos === "all"
+      ? "Todas las cajas"
+      : (cajas.find((c) => String(c.id) === String(cajaFiltroProductos))?.nombre || `Caja ${cajaFiltroProductos}`);
 
   const cargarEstadisticas = async () => {
     if (!rango[0] || !rango[1]) return;
@@ -522,9 +751,53 @@ const Estadisticas = () => {
     }
   };
 
+  const cargarProductosVendidos = async (
+    rangoFiltro = rangoProductos,
+    cajaFiltro = cajaFiltroProductos
+  ) => {
+    if (!rangoFiltro[0] || !rangoFiltro[1]) return;
+    setLoadingProductos(true);
+    try {
+      const startDate = rangoFiltro[0].format("YYYY-MM-DD");
+      const endDate = rangoFiltro[1].format("YYYY-MM-DD");
+      const query = new URLSearchParams({
+        startDate,
+        endDate,
+      });
+      if (cajaFiltro !== "all") {
+        query.set("cajaId", String(cajaFiltro));
+      }
+      const res = await api(
+        `api/estadisticas/productos-vendidos?${query.toString()}`
+      );
+      setProductosVendidos(res);
+    } catch (error) {
+      message.error(error.message || "Error al cargar productos vendidos");
+      setProductosVendidos(null);
+    } finally {
+      setLoadingProductos(false);
+    }
+  };
+
   useEffect(() => {
     cargarEstadisticas();
   }, [rango]);
+
+  useEffect(() => {
+    cargarProductosVendidos();
+  }, [rangoProductos, cajaFiltroProductos]);
+
+  useEffect(() => {
+    const cargarCajas = async () => {
+      try {
+        const res = await api("api/caja", "GET");
+        setCajas(Array.isArray(res) ? res : []);
+      } catch {
+        setCajas([]);
+      }
+    };
+    cargarCajas();
+  }, []);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -671,12 +944,143 @@ const Estadisticas = () => {
         totalNotasCredito,
         totalSaldoInicial,
       });
+      // Sincroniza el panel visible con el mismo filtro usado para el PDF.
+      setRango([start, end]);
       message.success("PDF generado correctamente");
       setDiarioModalOpen(false);
     } catch (err) {
       message.error(err?.message || "Error al generar el PDF");
     } finally {
       setPrintingDiario(false);
+    }
+  };
+
+  const resolverRangoDiarioProductos = () => {
+    const hoy = dayjs();
+    switch (diarioProductosPreset) {
+      case "hoy":
+        return [hoy.startOf("day"), hoy.endOf("day")];
+      case "semana":
+        return [hoy.subtract(6, "day").startOf("day"), hoy.endOf("day")];
+      case "mes":
+        return [hoy.startOf("month"), hoy.endOf("day")];
+      case "cuatrimestre":
+        return [hoy.subtract(3, "month").startOf("month"), hoy.endOf("day")];
+      case "personalizado":
+        return [
+          diarioProductosRango?.[0]?.startOf("day") || hoy.startOf("day"),
+          diarioProductosRango?.[1]?.endOf("day") || hoy.endOf("day"),
+        ];
+      default:
+        return [hoy.startOf("day"), hoy.endOf("day")];
+    }
+  };
+
+  const handleGenerarPdfProductos = async () => {
+    const [start, end] = resolverRangoDiarioProductos();
+    if (!start || !end) {
+      message.warning("Seleccioná un rango válido");
+      return;
+    }
+    setPrintingProductos(true);
+    try {
+      const startDate = start.format("YYYY-MM-DD");
+      const endDate = end.format("YYYY-MM-DD");
+      const query = new URLSearchParams({
+        startDate,
+        endDate,
+      });
+      if (cajaFiltroProductos !== "all") {
+        query.set("cajaId", String(cajaFiltroProductos));
+      }
+      const res = await api(
+        `api/estadisticas/productos-vendidos?${query.toString()}`
+      );
+      if (!res?.productosVendidos || res.productosVendidos.length === 0) {
+        message.warning("No hay productos vendidos en el período seleccionado");
+        return;
+      }
+      // Sincroniza estadísticas generales y bloque de productos con el filtro del modal.
+      setRango([start, end]);
+      setRangoProductos([start, end]);
+      setProductosVendidos(res);
+      await generarPdfResumenVentasPorUnidades({
+        productosVendidos: res.productosVendidos,
+        fechaInicio: start,
+        fechaFin: end,
+        totalSubtotal: res.totalSubtotal || 0,
+        cajaLabel: cajaFiltroProductosLabel,
+      });
+      message.success("PDF generado correctamente");
+      setDiarioProductosModalOpen(false);
+    } catch (err) {
+      message.error(err?.message || "Error al generar el PDF");
+    } finally {
+      setPrintingProductos(false);
+    }
+  };
+
+  const resolverRangoDiarioProductosClientes = () => {
+    const hoy = dayjs();
+    switch (diarioProductosClientesPreset) {
+      case "hoy":
+        return [hoy.startOf("day"), hoy.endOf("day")];
+      case "semana":
+        return [hoy.subtract(6, "day").startOf("day"), hoy.endOf("day")];
+      case "mes":
+        return [hoy.startOf("month"), hoy.endOf("day")];
+      case "cuatrimestre":
+        return [hoy.subtract(3, "month").startOf("month"), hoy.endOf("day")];
+      case "personalizado":
+        return [
+          diarioProductosClientesRango?.[0]?.startOf("day") || hoy.startOf("day"),
+          diarioProductosClientesRango?.[1]?.endOf("day") || hoy.endOf("day"),
+        ];
+      default:
+        return [hoy.startOf("day"), hoy.endOf("day")];
+    }
+  };
+
+  const handleGenerarPdfProductosClientes = async () => {
+    const [start, end] = resolverRangoDiarioProductosClientes();
+    if (!start || !end) {
+      message.warning("Seleccioná un rango válido");
+      return;
+    }
+    setPrintingProductosClientes(true);
+    try {
+      const startDate = start.format("YYYY-MM-DD");
+      const endDate = end.format("YYYY-MM-DD");
+      const query = new URLSearchParams({
+        startDate,
+        endDate,
+      });
+      if (cajaFiltroProductos !== "all") {
+        query.set("cajaId", String(cajaFiltroProductos));
+      }
+      const res = await api(
+        `api/estadisticas/productos-clientes?${query.toString()}`
+      );
+      if (!res?.productos || res.productos.length === 0) {
+        message.warning("No hay ventas por producto/cliente en el período seleccionado");
+        return;
+      }
+      setRango([start, end]);
+      setRangoProductos([start, end]);
+      await cargarProductosVendidos([start, end], cajaFiltroProductos);
+      await generarPdfProductosPorCliente({
+        productos: res.productos,
+        fechaInicio: start,
+        fechaFin: end,
+        totalSubtotal: res.totalSubtotal || 0,
+        cajaLabel: cajaFiltroProductosLabel,
+      });
+      message.success("PDF generado correctamente");
+      setDiarioProductosClientesModalOpen(false);
+    } catch (err) {
+      message.error(err?.message || "Error al generar el PDF");
+    } finally {
+      setPrintingProductosClientes(false);
     }
   };
 
@@ -970,6 +1374,136 @@ const Estadisticas = () => {
               </div>
             </Col>
           </Row>
+
+          {/* Resumen de productos vendidos */}
+          <Card
+            title="Resumen de productos vendidos"
+            className="mb-4"
+            extra={
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Select
+                  value={cajaFiltroProductos}
+                  onChange={setCajaFiltroProductos}
+                  style={{ minWidth: 180 }}
+                  options={[
+                    { value: "all", label: "Todas las cajas" },
+                    ...cajas
+                      .filter((c) => String(c?.nombre || "").trim().toLowerCase() !== "lucas")
+                      .map((c) => ({
+                      value: String(c.id),
+                      label: c.nombre || `Caja ${c.id}`,
+                      })),
+                  ]}
+                />
+                <Button
+                  type="primary"
+                  icon={<PrinterOutlined />}
+                  onClick={() => setDiarioProductosModalOpen(true)}
+                >
+                  Diario por producto
+                </Button>
+                <Button
+                  icon={<PrinterOutlined />}
+                  onClick={() => setDiarioProductosClientesModalOpen(true)}
+                >
+                  Producto por cliente
+                </Button>
+              </div>
+            }
+          >
+            <p className="text-xs text-gray-500 mb-2">
+              Período mostrado: {dayjs(rangoProductos[0]).format("DD/MM/YYYY")} a {dayjs(rangoProductos[1]).format("DD/MM/YYYY")}
+            </p>
+            <p className="text-xs text-gray-500 mb-2">
+              Caja: {cajaFiltroProductosLabel}
+            </p>
+            {loadingProductos ? (
+              <div className="flex justify-center py-8">
+                <Spin tip="Cargando productos vendidos..." />
+              </div>
+            ) : productosVendidos && productosVendidos.productosVendidos && productosVendidos.productosVendidos.length > 0 ? (
+              <Table
+                columns={[
+                  {
+                    title: "Producto",
+                    dataIndex: "productoNombre",
+                    key: "productoNombre",
+                    width: 200,
+                    ellipsis: true,
+                  },
+                  {
+                    title: "Cantidad",
+                    dataIndex: "cantidadTotal",
+                    key: "cantidadTotal",
+                    width: 100,
+                    align: "right",
+                    render: (v, record) =>
+                      formatCantidadPorUnidad(v, record.unidadTipo),
+                  },
+                  {
+                    title: "Unidad",
+                    dataIndex: "unidadTipo",
+                    key: "unidadTipo",
+                    width: 100,
+                    align: "center",
+                  },
+                  {
+                    title: "Precios",
+                    key: "precios",
+                    width: 200,
+                    align: "left",
+                    render: (_, record) => {
+                      if (record.precioMin !== null && record.precioMax !== null) {
+                        return (
+                          <span style={{ fontSize: 12 }}>
+                            Min: {formatMoneda(record.precioMin)} / Max: {formatMoneda(record.precioMax)} / Prom: {formatMoneda(Math.round(record.precioPromedio))}
+                          </span>
+                        );
+                      }
+                      return <span style={{ fontSize: 12 }}>Prom: {formatMoneda(Math.round(record.precioPromedio))}</span>;
+                    },
+                  },
+                  {
+                    title: "Subtotal",
+                    dataIndex: "subtotal",
+                    key: "subtotal",
+                    width: 120,
+                    align: "right",
+                    render: (v) => (
+                      <span style={{ fontWeight: 600 }}>{formatMoneda(v)}</span>
+                    ),
+                  },
+                ]}
+                dataSource={productosVendidos.productosVendidos}
+                rowKey={(record) => `${record.productoNombre}-${record.unidadTipo}`}
+                size="small"
+                scroll={{ x: 720 }}
+                pagination={{
+                  pageSize: 20,
+                  showSizeChanger: true,
+                  showTotal: (t) => `Total: ${t} productos`,
+                  pageSizeOptions: ["10", "20", "50", "100"],
+                  size: "small",
+                }}
+                summary={() => (
+                  <Table.Summary fixed>
+                    <Table.Summary.Row>
+                      <Table.Summary.Cell index={0} colSpan={4} align="right">
+                        <strong>Total:</strong>
+                      </Table.Summary.Cell>
+                      <Table.Summary.Cell index={4} align="right">
+                        <strong style={{ fontSize: 14, color: "#16a34a" }}>
+                          {formatMoneda(productosVendidos.totalSubtotal || 0)}
+                        </strong>
+                      </Table.Summary.Cell>
+                    </Table.Summary.Row>
+                  </Table.Summary>
+                )}
+              />
+            ) : (
+              <p className="text-gray-500 text-sm">No hay productos vendidos en el período seleccionado.</p>
+            )}
+          </Card>
         </>
       )}
 
@@ -997,6 +1531,68 @@ const Estadisticas = () => {
             <DatePicker.RangePicker
               value={diarioRango}
               onChange={(dates) => dates && setDiarioRango(dates)}
+              format="DD/MM/YYYY"
+              allowClear={false}
+            />
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        title="Diario de ventas por producto"
+        open={diarioProductosModalOpen}
+        onCancel={() => setDiarioProductosModalOpen(false)}
+        onOk={handleGenerarPdfProductos}
+        okText="Generar PDF"
+        confirmLoading={printingProductos}
+      >
+        <Radio.Group
+          value={diarioProductosPreset}
+          onChange={(e) => setDiarioProductosPreset(e.target.value)}
+          style={{ display: "flex", flexDirection: "column", gap: 8 }}
+        >
+          <Radio value="hoy">Hoy</Radio>
+          <Radio value="semana">Últimos 7 días</Radio>
+          <Radio value="mes">Mes actual</Radio>
+          <Radio value="cuatrimestre">Último cuatrimestre</Radio>
+          <Radio value="personalizado">Rango personalizado</Radio>
+        </Radio.Group>
+        {diarioProductosPreset === "personalizado" && (
+          <div style={{ marginTop: 12 }}>
+            <DatePicker.RangePicker
+              value={diarioProductosRango}
+              onChange={(dates) => dates && setDiarioProductosRango(dates)}
+              format="DD/MM/YYYY"
+              allowClear={false}
+            />
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        title="Diario por producto y cliente"
+        open={diarioProductosClientesModalOpen}
+        onCancel={() => setDiarioProductosClientesModalOpen(false)}
+        onOk={handleGenerarPdfProductosClientes}
+        okText="Generar PDF"
+        confirmLoading={printingProductosClientes}
+      >
+        <Radio.Group
+          value={diarioProductosClientesPreset}
+          onChange={(e) => setDiarioProductosClientesPreset(e.target.value)}
+          style={{ display: "flex", flexDirection: "column", gap: 8 }}
+        >
+          <Radio value="hoy">Hoy</Radio>
+          <Radio value="semana">Últimos 7 días</Radio>
+          <Radio value="mes">Mes actual</Radio>
+          <Radio value="cuatrimestre">Último cuatrimestre</Radio>
+          <Radio value="personalizado">Rango personalizado</Radio>
+        </Radio.Group>
+        {diarioProductosClientesPreset === "personalizado" && (
+          <div style={{ marginTop: 12 }}>
+            <DatePicker.RangePicker
+              value={diarioProductosClientesRango}
+              onChange={(dates) => dates && setDiarioProductosClientesRango(dates)}
               format="DD/MM/YYYY"
               allowClear={false}
             />
