@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Select,
   DatePicker,
@@ -206,7 +207,9 @@ const prepararTransacciones = (raw) => {
   return conSaldoAscendente.reverse();
 };
 
-const VentasPorNegocio = () => {
+const VentasPorNegocio = ({ preselectNegocioId }) => {
+  const [searchParams] = useSearchParams();
+  const selectNegocioRef = useRef(null);
   // Obtener rol del usuario (1 = encargado de ventas)
   const userRole = Number(localStorage.getItem("rol"));
   const isEncargadoVentas = userRole === 1;
@@ -271,6 +274,34 @@ const VentasPorNegocio = () => {
   const isMobile = screenWidth < 768;
   const isTablet = screenWidth >= 768 && screenWidth < 1024;
   const isDesktop = screenWidth >= 1024;
+
+  useEffect(() => {
+    const negocioIdParam = searchParams.get("negocioId");
+    const startDateParam = searchParams.get("startDate");
+    const endDateParam = searchParams.get("endDate");
+    if (negocioIdParam) {
+      const negocioIdNum = Number(negocioIdParam);
+      if (Number.isFinite(negocioIdNum)) {
+        setNegocioSeleccionado(negocioIdNum);
+      }
+    }
+    if (startDateParam) {
+      const d = dayjs(startDateParam);
+      if (d.isValid()) setFechaInicio(d);
+    }
+    if (endDateParam) {
+      const d = dayjs(endDateParam);
+      if (d.isValid()) setFechaFin(d);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!preselectNegocioId) return;
+    const idNum = Number(preselectNegocioId);
+    if (!Number.isFinite(idNum)) return;
+    if (Number(negocioSeleccionado) === idNum) return;
+    setNegocioSeleccionado(idNum);
+  }, [preselectNegocioId, negocioSeleccionado]);
 
   useEffect(() => {
     const fetchNegocios = async () => {
@@ -823,6 +854,14 @@ const VentasPorNegocio = () => {
     setNegocioSeleccionado(value);
   };
 
+  const handleNegocioChangeMobile = (value) => {
+    handleNegocioChange(value);
+    // Oculta teclado en mobile
+    try {
+      selectNegocioRef.current?.blur?.();
+    } catch {}
+  };
+
   // Definir columnas según el tamaño de pantalla
   const getColumns = () => {
     if (isMobile) {
@@ -1237,8 +1276,11 @@ const VentasPorNegocio = () => {
                   filterOption={(input, option) =>
                     (option?.label?.toLowerCase() ?? "").includes(input.toLowerCase())
                   }
-                  onChange={handleNegocioChange}
+                  onChange={handleNegocioChangeMobile}
                   value={negocioSeleccionado}
+                  ref={selectNegocioRef}
+                  getPopupContainer={(trigger) => trigger.parentNode}
+                  dropdownStyle={{ maxHeight: 260, overflow: "auto" }}
                   className="mb-2"
                 >
                   {negocios

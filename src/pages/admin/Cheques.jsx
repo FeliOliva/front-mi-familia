@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Table,
   message,
@@ -27,6 +27,9 @@ const Cheques = () => {
   const [total, setTotal] = useState(0);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [negocios, setNegocios] = useState([]);
+  const [filtroNumero, setFiltroNumero] = useState("");
+  const [filtroCliente, setFiltroCliente] = useState("");
+  const [filtroBanco, setFiltroBanco] = useState("");
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingCheque, setEditingCheque] = useState(null);
@@ -77,6 +80,31 @@ const Cheques = () => {
 
   const formatDate = (dateStr) =>
     dateStr ? dayjs(dateStr).format("DD/MM/YYYY") : "-";
+
+  const normalizeText = (v) => String(v || "").toLowerCase().trim();
+
+  const chequesFiltrados = useMemo(() => {
+    const num = normalizeText(filtroNumero);
+    const cli = normalizeText(filtroCliente);
+    const ban = normalizeText(filtroBanco);
+    const filtered = cheques.filter((c) => {
+      const nro = normalizeText(c.nroCheque);
+      const negocioNombre = normalizeText(c.negocio?.nombre);
+      const banco = normalizeText(c.banco);
+      if (num && !nro.includes(num)) return false;
+      if (cli && !negocioNombre.includes(cli)) return false;
+      if (ban && !banco.includes(ban)) return false;
+      return true;
+    });
+    const getIngresoMs = (c) => {
+      const f =
+        c.fechaCreacion || c.createdAt || c.fecha || c.fechaEmision || null;
+      const t = f ? new Date(f).getTime() : NaN;
+      if (!Number.isNaN(t)) return t;
+      return Number(c.id || 0);
+    };
+    return filtered.sort((a, b) => getIngresoMs(b) - getIngresoMs(a));
+  }, [cheques, filtroNumero, filtroCliente, filtroBanco]);
 
   const handleEdit = (cheque) => {
     setEditingCheque(cheque);
@@ -236,7 +264,7 @@ const Cheques = () => {
   ];
 
   // Solo mostrar cheques activos en la tabla por defecto; opcionalmente podés mostrar todos y filtrar por estado
-  const dataSource = cheques;
+  const dataSource = chequesFiltrados;
 
   return (
     <div className="p-4 max-w-6xl mx-auto">
@@ -248,6 +276,26 @@ const Cheques = () => {
           </p>
         </div>
       </div>
+
+      <Card className="mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <Input
+            placeholder="Buscar por número de cheque"
+            value={filtroNumero}
+            onChange={(e) => setFiltroNumero(e.target.value)}
+          />
+          <Input
+            placeholder="Buscar por cliente"
+            value={filtroCliente}
+            onChange={(e) => setFiltroCliente(e.target.value)}
+          />
+          <Input
+            placeholder="Buscar por banco"
+            value={filtroBanco}
+            onChange={(e) => setFiltroBanco(e.target.value)}
+          />
+        </div>
+      </Card>
 
       {!loading && dataSource.length === 0 ? (
         <Card>

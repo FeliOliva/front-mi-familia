@@ -36,6 +36,21 @@ import {
 import { api } from "../../services/api";
 import dayjs from "dayjs";
 
+const NOTIF_NUEVA_VENTA_KEY = "mf_notif_nueva_venta";
+const shouldNotifyNuevaVenta = (ventaId) => {
+  if (!ventaId) return true;
+  try {
+    const raw = sessionStorage.getItem(NOTIF_NUEVA_VENTA_KEY);
+    const data = raw ? JSON.parse(raw) : {};
+    const now = Date.now();
+    const last = data[ventaId];
+    if (last && now - last < 5000) return false;
+    data[ventaId] = now;
+    sessionStorage.setItem(NOTIF_NUEVA_VENTA_KEY, JSON.stringify(data));
+  } catch {}
+  return true;
+};
+
 const EntregasEncargado = () => {
   // ====== Estado base ======
   const [entregas, setEntregas] = useState([]);
@@ -585,15 +600,17 @@ const EntregasEncargado = () => {
 
             setNewVentasIds((prevIds) => [...prevIds, nuevaVenta.id]);
 
-            notification.open({
-              message: "Nueva venta registrada",
-              description: `Se ha registrado una nueva venta #${
-                nuevaVenta.numero
-              } por ${formatMoney(nuevaVenta.monto)}`,
-              icon: <ShoppingCartOutlined style={{ color: "#1890ff" }} />,
-              placement: "topRight",
-              duration: 5,
-            });
+            if (shouldNotifyNuevaVenta(nuevaVenta.id)) {
+              notification.open({
+                message: "Nueva venta registrada",
+                description: `Se ha registrado una nueva venta #${
+                  nuevaVenta.numero
+                } por ${formatMoney(nuevaVenta.monto)}`,
+                icon: <ShoppingCartOutlined style={{ color: "#1890ff" }} />,
+                placement: "topRight",
+                duration: 5,
+              });
+            }
           }
         } else if (mensaje.tipo === "venta-eliminada") {
           const idEliminado = mensaje.data?.id;

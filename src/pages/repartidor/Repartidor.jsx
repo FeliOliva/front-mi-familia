@@ -17,6 +17,7 @@ const Repartidor = () => {
   const [userName, setUserName] = useState("");
   const [newNotifications, setNewNotifications] = useState(0);
   const [activeTab, setActiveTab] = useState("entregas");
+  const [resumenNegocioId, setResumenNegocioId] = useState(null);
   const navigate = useNavigate();
   const tabs = ["entregas", "resumenes", "gastos"];
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -101,6 +102,12 @@ const Repartidor = () => {
   // Función para resetear las notificaciones
   const resetNotifications = () => {
     setNewNotifications(0);
+  };
+
+  const handleOpenResumen = (negocioId) => {
+    if (!negocioId) return;
+    setResumenNegocioId(Number(negocioId));
+    setActiveTab("resumenes");
   };
 
   // Función para cerrar sesión
@@ -210,9 +217,9 @@ const Repartidor = () => {
         }}
       >
         {activeTab === "entregas" ? (
-          <Entregas />
+          <Entregas onOpenResumen={handleOpenResumen} />
         ) : activeTab === "resumenes" ? (
-          <Resumenes />
+          <Resumenes preselectNegocioId={resumenNegocioId} />
         ) : (
           <Gastos />
         )}
