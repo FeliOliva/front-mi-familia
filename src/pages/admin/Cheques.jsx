@@ -37,16 +37,17 @@ const Cheques = () => {
 
   const [form] = Form.useForm();
 
-  const fetchCheques = async (page = 1) => {
+  const fetchCheques = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      params.set("page", String(page));
-      params.set("limit", String(pageSize));
+      params.set("page", "1");
+      params.set("limit", "5000");
       const data = await api(`api/cheques?${params.toString()}`);
-      setCheques(data.cheques || []);
-      setTotal(data.total || 0);
-      setCurrentPage(data.currentPage || page);
+      const list = data.cheques || [];
+      setCheques(list);
+      setTotal(list.length);
+      setCurrentPage(1);
     } catch (error) {
       message.error(error.message || "Error al cargar los cheques");
     } finally {
@@ -105,6 +106,11 @@ const Cheques = () => {
     };
     return filtered.sort((a, b) => getIngresoMs(b) - getIngresoMs(a));
   }, [cheques, filtroNumero, filtroCliente, filtroBanco]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setTotal(chequesFiltrados.length);
+  }, [chequesFiltrados]);
 
   const handleEdit = (cheque) => {
     setEditingCheque(cheque);
@@ -264,7 +270,10 @@ const Cheques = () => {
   ];
 
   // Solo mostrar cheques activos en la tabla por defecto; opcionalmente podés mostrar todos y filtrar por estado
-  const dataSource = chequesFiltrados;
+  const dataSource = chequesFiltrados.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
 
   return (
     <div className="p-4 max-w-6xl mx-auto">
@@ -378,7 +387,7 @@ const Cheques = () => {
             current: currentPage,
             pageSize,
             total,
-            onChange: (page) => fetchCheques(page),
+            onChange: (page) => setCurrentPage(page),
             showSizeChanger: false,
             showTotal: (t) => `Total: ${t} cheques`,
           }}
