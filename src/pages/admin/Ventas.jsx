@@ -1594,7 +1594,6 @@ const Ventas = () => {
       width: 120,
       align: "center",
       render: (_, record) => {
-        if (isMobile) return null;
         const esPagoVenta =
           record.estadoPago === 1 ||
           record.estadoPago === 3 ||
