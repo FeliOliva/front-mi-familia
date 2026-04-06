@@ -100,6 +100,15 @@ const Entregas = ({ onOpenResumen }) => {
   const [detalleMetodo, setDetalleMetodo] = useState(null);
   const [ventasEspeciales, setVentasEspeciales] = useState([]);
 
+  const selectedEntregaIdRef = useRef(null);
+  const entregaAEntregarIdRef = useRef(null);
+  useEffect(() => {
+    selectedEntregaIdRef.current = selectedEntrega?.id ?? null;
+  }, [selectedEntrega]);
+  useEffect(() => {
+    entregaAEntregarIdRef.current = entregaAEntregar?.id ?? null;
+  }, [entregaAEntregar]);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handleResize);
@@ -121,6 +130,11 @@ const Entregas = ({ onOpenResumen }) => {
       return {};
     }
   });
+  const ccEntregadasRef = useRef(ccEntregadas);
+  useEffect(() => {
+    ccEntregadasRef.current = ccEntregadas;
+  }, [ccEntregadas]);
+
   // Normaliza la venta que viene del WebSocket / API al shape que usa el front
   const normalizarVentaWS = (venta, ccEntregadasMap = {}) => ({
     id: venta.id,
@@ -254,9 +268,10 @@ const Entregas = ({ onOpenResumen }) => {
 
         // Procesamos el mensaje según su tipo
         if (mensaje.tipo === "ventas-iniciales") {
+          const ccMap = ccEntregadasRef.current || {};
           if (mensaje.data && mensaje.data.length > 0) {
             const nuevasVentas = mensaje.data.map((venta) =>
-              normalizarVentaWS(venta, ccEntregadas)
+              normalizarVentaWS(venta, ccMap)
             );
 
             nuevasVentas.forEach(actualizarVentasEspeciales);
@@ -269,9 +284,13 @@ const Entregas = ({ onOpenResumen }) => {
             setFilteredEntregas([]);
             setLoading(false);
           }
+          void refrescarTotalesCaja();
         } else if (mensaje.tipo === "nueva-venta") {
           if (mensaje.data) {
-            const nuevaVenta = normalizarVentaWS(mensaje.data, ccEntregadas);
+            const nuevaVenta = normalizarVentaWS(
+              mensaje.data,
+              ccEntregadasRef.current || {}
+            );
 
             setEntregas((prevEntregas) => [nuevaVenta, ...prevEntregas]);
 
@@ -294,11 +313,58 @@ const Entregas = ({ onOpenResumen }) => {
               });
             }
           }
-        } else if (mensaje.tipo === "venta-actualizada") {
+        } else if (mensaje.tipo === "venta-eliminada") {
+          const idEliminado = mensaje.data?.id;
+          if (idEliminado != null) {
+            const idNum = Number(idEliminado);
+            setEntregas((prevEntregas) => {
+              const next = prevEntregas.filter(
+                (v) => Number(v.id) !== idNum
+              );
+              applyFilter(estadoFiltro, next);
+              return next;
+            });
+            setVentasEspeciales((prev) =>
+              prev.filter((v) => Number(v.id) !== idNum)
+            );
+            setNewVentasIds((prevIds) =>
+              prevIds.filter((id) => Number(id) !== idNum)
+            );
+            if (
+              selectedEntregaIdRef.current != null &&
+              Number(selectedEntregaIdRef.current) === idNum
+            ) {
+              setSelectedEntrega(null);
+              setDetailsModalVisible(false);
+              setPaymentModalVisible(false);
+            }
+            if (
+              entregaAEntregarIdRef.current != null &&
+              Number(entregaAEntregarIdRef.current) === idNum
+            ) {
+              setConfirmEntregaVisible(false);
+              setEntregaAEntregar(null);
+            }
+            void refrescarTotalesCaja();
+            notification.warning({
+              message: "Venta ya no está en tu caja",
+              description:
+                "Fue reasignada a otra caja o eliminada. La lista y los totales se actualizaron.",
+              icon: (
+                <ExclamationCircleOutlined style={{ color: "#faad14" }} />
+              ),
+              placement: "topRight",
+              duration: 6,
+            });
+          }
+        } else if (
+          mensaje.tipo === "venta-actualizada" ||
+          mensaje.tipo === "venta-aplazada"
+        ) {
           // Normalizamos lo que viene del backend
           const ventaActualizada = normalizarVentaWS(
             mensaje.data,
-            ccEntregadas
+            ccEntregadasRef.current || {}
           );
 
           setEntregas((prev) => {

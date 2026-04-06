@@ -1603,14 +1603,30 @@ const Ventas = () => {
         if (esPagoVenta) {
           const label =
             record.estadoPago === 3 ? "Pago otro día" : "Agregar pago";
-          return (
+          const miCaja = Number(localStorage.getItem("cajaId") || 0);
+          const cajaVenta =
+            record.cajaId != null ? Number(record.cajaId) : null;
+          const bloquearPagoOtraCaja =
+            cajaVenta != null &&
+            !Number.isNaN(cajaVenta) &&
+            miCaja > 0 &&
+            cajaVenta !== miCaja;
+          const msgCajaAjena =
+            "Venta asignada a otra caja: corregí la caja en la venta o registrá el cobro desde esa caja.";
+          const btn = (
             <Button
               size="small"
               icon={<CreditCardOutlined />}
+              disabled={bloquearPagoOtraCaja}
               onClick={() => openPagoModal(record, "venta")}
             >
               {label}
             </Button>
+          );
+          return bloquearPagoOtraCaja ? (
+            <Tooltip title={msgCajaAjena}>{btn}</Tooltip>
+          ) : (
+            btn
           );
         }
         if (esPagoCerrado) {
