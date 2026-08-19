@@ -18,7 +18,6 @@ import {
   EyeOutlined,
   EditOutlined,
   DeleteOutlined,
-  MoreOutlined,
   PlusOutlined,
   PrinterOutlined,
   CreditCardOutlined,
@@ -27,6 +26,7 @@ import {
 } from "@ant-design/icons";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import EditarVentaModal from "./EditarVentaModal";
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -230,6 +230,8 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
   const [editMetodoPago, setEditMetodoPago] = useState(null);
   const [editMotivo, setEditMotivo] = useState("");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editVentaModalOpen, setEditVentaModalOpen] = useState(false);
+  const [editVentaId, setEditVentaId] = useState(null);
   const [screenWidth, setScreenWidth] = useState(window.innerWidth);
   const [filterDrawerVisible, setFilterDrawerVisible] = useState(false);
   const [actionDrawerVisible, setActionDrawerVisible] = useState(false);
@@ -436,9 +438,12 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
           message.error("No se pudo identificar la venta para editar");
           return;
         }
-        res = await api(`api/ventas/${idFinal}`);
-        setEditingRecord(res);
-        setEditMonto(res.total);
+        // Abrir el modal embebido de edición de venta (mismo flujo que Ventas):
+        // permite modificar los productos/componentes y el total se recalcula.
+        setActionDrawerVisible(false);
+        setEditVentaId(idFinal);
+        setEditVentaModalOpen(true);
+        return;
       } else if (record.tipo === "Entrega") {
         if (!record.id) {
           message.error("No se pudo identificar la entrega para editar");
@@ -884,17 +889,27 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
           render: (monto) => `$${monto}`,
         },
         {
-          title: "",
-          width: "25%",
+          title: "Acciones",
+          width: "30%",
           render: (_, record) => (
-            <Button
-              icon={<MoreOutlined />}
-              onClick={() => {
-                setSelectedRecord(record);
-                setActionDrawerVisible(true);
-              }}
-              size="small"
-            />
+            <div className="flex gap-1">
+              <Button
+                icon={<EyeOutlined />}
+                onClick={() => handleVerDetalle(record)}
+                size="small"
+              />
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => handleEditar(record)}
+                size="small"
+              />
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => handleEliminar(record.id, record.tipo, record)}
+                size="small"
+              />
+            </div>
           ),
         },
       ];
@@ -1450,7 +1465,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
               simple: isMobile,
             }}
             size={isMobile || isTablet ? "small" : "middle"}
-            scroll={{ x: isMobile ? 480 : isTablet ? 650 : 950 }}
+            scroll={{ x: isMobile ? 540 : isTablet ? 650 : 950 }}
             locale={{ emptyText: "No hay datos disponibles" }}
           />
         </div>
@@ -2039,6 +2054,19 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
           </div>
         )}
       </Drawer>
+
+      {/* Modal embebido para editar los productos/componentes de una venta */}
+      <EditarVentaModal
+        open={editVentaModalOpen}
+        ventaId={editVentaId}
+        negocios={negocios}
+        isMobile={isMobile}
+        onClose={() => {
+          setEditVentaModalOpen(false);
+          setEditVentaId(null);
+        }}
+        onSaved={() => obtenerResumen()}
+      />
 
     </div>
   );

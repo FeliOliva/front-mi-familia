@@ -54,6 +54,8 @@ const MainLayout = () => {
         return "Ventas";
       case "/pedidos":
         return "Pedidos";
+      case "/presupuestos":
+        return "Presupuestos";
       case "/productos":
         return "Productos";
       case "/negocios":
@@ -99,6 +101,14 @@ const MainLayout = () => {
                 onClick={() => isMobile && setMobileDrawerOpen(false)}
               >
                 Pedidos
+              </Link>
+            </Menu.Item>
+            <Menu.Item key="/presupuestos" icon={<FileTextOutlined />}>
+              <Link
+                to="/presupuestos"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Presupuestos
               </Link>
             </Menu.Item>
             <Menu.Item key="/productos" icon={<ShoppingOutlined />}>
@@ -169,6 +179,14 @@ const MainLayout = () => {
                 onClick={() => isMobile && setMobileDrawerOpen(false)}
               >
                 Ventas
+              </Link>
+            </Menu.Item>
+            <Menu.Item key="/presupuestos" icon={<FileTextOutlined />}>
+              <Link
+                to="/presupuestos"
+                onClick={() => isMobile && setMobileDrawerOpen(false)}
+              >
+                Presupuestos
               </Link>
             </Menu.Item>
             <Menu.Item key="/productos" icon={<ShoppingOutlined />}>

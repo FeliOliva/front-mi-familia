@@ -16,7 +16,9 @@ import {
   EditOutlined,
   StopOutlined,
   CheckOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
+import ListaProductosModal from "./ListaProductosModal";
 
 const { Option } = Select;
 
@@ -43,6 +45,7 @@ const Productos = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [listaModalOpen, setListaModalOpen] = useState(false);
 
   const [form] = Form.useForm();
   const inputNombreRef = useRef(null);
@@ -330,9 +333,17 @@ const Productos = () => {
           <h2 className="text-lg font-semibold text-gray-900 mb-2 sm:mb-0">
             Productos
           </h2>
-          <Button type="primary" onClick={openAddModal}>
-            Agregar Producto
-          </Button>
+          <Space wrap>
+            <Button
+              icon={<UnorderedListOutlined />}
+              onClick={() => setListaModalOpen(true)}
+            >
+              Generar Lista
+            </Button>
+            <Button type="primary" onClick={openAddModal}>
+              Agregar Producto
+            </Button>
+          </Space>
         </div>
         <div className="px-4 py-4 flex flex-col gap-3">
           <Input
@@ -508,6 +519,12 @@ const Productos = () => {
           )}
         </Form>
       </Modal>
+
+      {/* Modal para generar lista de productos configurable */}
+      <ListaProductosModal
+        open={listaModalOpen}
+        onClose={() => setListaModalOpen(false)}
+      />
     </div>
   );
 };

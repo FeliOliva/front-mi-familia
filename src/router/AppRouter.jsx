@@ -11,6 +11,7 @@ import Productos from "../pages/admin/Productos";
 import Negocios from "../pages/admin/Negocios";
 import Resumenes from "../pages/admin/Resumenes";
 import Pedidos from "../pages/admin/Pedidos";
+import Presupuestos from "../pages/admin/Presupuestos";
 import Repartidor from "../pages/repartidor/Repartidor";
 import Unauthorized from "../pages/Unauthorized";
 import Entregas from "../pages/repartidor/Entregas";
@@ -82,6 +83,7 @@ const AppRouter = () => {
                     <Route path="ventas" element={<Ventas />} />
                     <Route path="caja" element={<Caja />} />
                     <Route path="pedidos" element={<Pedidos />} />
+                    <Route path="presupuestos" element={<Presupuestos />} />
                     <Route path="gastos" element={<Gastos />} />
                     <Route path="cheques" element={<Cheques />} />
                     <Route path="estadisticas" element={<Estadisticas />} />
@@ -93,6 +95,7 @@ const AppRouter = () => {
                     <Route path="productos" element={<Productos />} />
                     <Route path="negocios" element={<Negocios />} />
                     <Route path="ventas" element={<Ventas />} />
+                    <Route path="presupuestos" element={<Presupuestos />} />
                     {/* <Route
                       path="cierre-caja"
                       element={<CierreCajaEncargado />}
