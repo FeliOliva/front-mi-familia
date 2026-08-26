@@ -248,11 +248,11 @@ const MainLayout = () => {
   const LogoutButton = () => (
     <div
       style={{
-        position: "absolute",
-        bottom: 0,
+        flexShrink: 0,
         width: "100%",
         borderTop: "1px solid rgba(255,255,255,0.1)",
         paddingBottom: "10px",
+        backgroundColor: "#001529",
       }}
     >
       <Menu theme="dark" mode="inline" selectable={false}>
@@ -298,10 +298,16 @@ const MainLayout = () => {
 
   // Contenido del sidebar, tanto para desktop como para móvil
   const SidebarContent = ({ collapsed = false }) => (
-    <div style={{ position: "relative", height: "100%" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+      }}
+    >
       <LogoComponent collapsed={collapsed} />
       <div className="demo-logo-vertical" />
-      <div style={{ height: "calc(100% - 130px)", overflowY: "auto" }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <MainMenuItems />
       </div>
       <LogoutButton />
@@ -317,7 +323,13 @@ const MainLayout = () => {
           collapsible
           collapsed={collapsed}
           width={200}
-          style={{ overflow: "hidden" }}
+          style={{
+            overflow: "hidden",
+            height: "100vh",
+            position: "sticky",
+            top: 0,
+            left: 0,
+          }}
         >
           <SidebarContent collapsed={collapsed} />
         </Sider>

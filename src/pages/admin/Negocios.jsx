@@ -9,6 +9,7 @@ import {
   Typography,
   Checkbox,
   Space,
+  Tag,
 } from "antd";
 import { useParams } from "react-router-dom";
 import { api } from "../../services/api";
@@ -34,6 +35,8 @@ const useIsMobile = () => {
 const Negocios = () => {
   const isMobile = useIsMobile();
   const { id } = useParams();
+  // Solo el admin (rol 0) puede crear negocios y marcarlos como privados
+  const isAdmin = Number(localStorage.getItem("rol")) === 0;
 
   const [negocios, setNegocios] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -120,11 +123,15 @@ const Negocios = () => {
       direccion: record.direccion,
       esCuentaCorriente: !!record.esCuentaCorriente,
       esEditable: !!record.esEditable,
+      esPrivado: !!record.esPrivado,
     });
   };
 
   const onFinish = async (values) => {
     try {
+      const rol_usuario = parseInt(localStorage.getItem("rol") || "0", 10);
+      // Solo el admin puede setear el flag privado
+      const esPrivado = isAdmin ? !!values.esPrivado : undefined;
       if (isEditing && editingNegocio) {
         // EDITAR (PUT)
         await api(`api/negocio/${editingNegocio.id}`, "PUT", {
@@ -132,6 +139,8 @@ const Negocios = () => {
           direccion: values.direccion,
           esCuentaCorriente: values.esCuentaCorriente,
           esEditable: values.esEditable,
+          esPrivado,
+          rol_usuario,
         });
 
         message.success("Negocio actualizado correctamente");
@@ -145,15 +154,16 @@ const Negocios = () => {
                   direccion: values.direccion,
                   esCuentaCorriente: values.esCuentaCorriente,
                   esEditable: values.esEditable,
+                  ...(isAdmin ? { esPrivado: !!values.esPrivado } : {}),
                 }
               : n
           )
         );
       } else {
         // CREAR (POST)
-        const rol_usuario = parseInt(localStorage.getItem("rol") || "0", 10);
         await api("api/negocio", "POST", {
           ...values,
+          esPrivado,
           clienteId: parseInt(id),
           rol_usuario,
         });
@@ -222,7 +232,21 @@ const Negocios = () => {
 
   // === Columnas: mismas reglas que en Productos (sin columna Estado) ===
   const columns = [
-    { title: "Nombre", dataIndex: "nombre", key: "nombre" },
+    {
+      title: "Nombre",
+      dataIndex: "nombre",
+      key: "nombre",
+      render: (nombre, record) => (
+        <span>
+          {nombre}
+          {record.esPrivado && (
+            <Tag color="purple" style={{ marginLeft: 6 }}>
+              Privado
+            </Tag>
+          )}
+        </span>
+      ),
+    },
     { title: "Dirección", dataIndex: "direccion", key: "direccion" },
     {
       title: "Cuenta Corriente",
@@ -286,9 +310,11 @@ const Negocios = () => {
           <h2 className="text-lg font-semibold text-gray-900 mb-2 sm:mb-0">
             Negocios
           </h2>
-          <Button type="primary" onClick={openAddModal}>
-            Agregar Negocio
-          </Button>
+          {isAdmin && (
+            <Button type="primary" onClick={openAddModal}>
+              Agregar Negocio
+            </Button>
+          )}
         </div>
         <div className="px-4 py-4 flex flex-col gap-3">
           <Input
@@ -413,6 +439,16 @@ const Negocios = () => {
           >
             <Checkbox>Registrar como cuenta editable</Checkbox>
           </Form.Item>
+          {isAdmin && (
+            <Form.Item
+              name="esPrivado"
+              valuePropName="checked"
+              initialValue={false}
+              extra="Un negocio privado solo lo ve el administrador: queda oculto en cuenta, ventas y pagos para el resto."
+            >
+              <Checkbox>Negocio privado (solo admin)</Checkbox>
+            </Form.Item>
+          )}
         </Form>
       </Modal>
     </div>

@@ -277,6 +277,16 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
   const isTablet = screenWidth >= 768 && screenWidth < 1024;
   const isDesktop = screenWidth >= 1024;
 
+  // Caja del admin: los pagos de negocios privados van acá para no afectar otras cajas
+  const CAJA_ADMIN_ID = 1;
+  const getCajaParaEntrega = () => {
+    const negocioObj = negocios.find(
+      (n) => Number(n.id) === Number(negocioSeleccionado)
+    );
+    if (negocioObj?.esPrivado) return CAJA_ADMIN_ID;
+    return parseInt(localStorage.getItem("cajaId") || "0", 10);
+  };
+
   useEffect(() => {
     const negocioIdParam = searchParams.get("negocioId");
     const startDateParam = searchParams.get("startDate");
@@ -602,7 +612,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
 
     setLoadingPago(true);
     try {
-      const cajaId = parseInt(localStorage.getItem("cajaId") || "0", 10);
+      const cajaId = getCajaParaEntrega();
       await api("api/entregas", "POST", {
         monto: montoNum,
         metodoPagoId: Number(nuevoMetodoPago),
@@ -1663,10 +1673,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
               setLoadingPago(true);
               const values = await chequeForm.validateFields();
 
-              const cajaId = parseInt(
-                localStorage.getItem("cajaId") || "0",
-                10
-              );
+              const cajaId = getCajaParaEntrega();
               if (!cajaId) {
                 message.error("Caja no encontrada");
                 setLoadingPago(false);

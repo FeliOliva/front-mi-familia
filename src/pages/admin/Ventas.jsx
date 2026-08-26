@@ -432,6 +432,20 @@ const Ventas = () => {
   );
   const negocioEsEditable = !!negocioActual?.esEditable;
 
+  // Caja del admin (oculta para el resto). Las ventas de negocios privados van acá
+  // para no influir en las cajas de los demás vendedores.
+  const CAJA_ADMIN_ID = 1;
+  const isAdmin = Number(localStorage.getItem("rol")) === 0;
+  const negocioEsPrivado = !!negocioActual?.esPrivado;
+
+  // Si el negocio seleccionado es privado, rutear la venta a la caja del admin
+  useEffect(() => {
+    if (isAdmin && negocioEsPrivado) {
+      setSelectedCaja(CAJA_ADMIN_ID);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, negocioEsPrivado]);
+
   const cartEffectInitialized = useRef(false);
   const inputBuscadorRef = useRef(null);
   const inputCantidadRef = useRef(null);
@@ -1993,7 +2007,7 @@ const Ventas = () => {
             >
               <Option value="todas">Todas las cajas</Option>
               {cajas
-                .filter((caja) => Number(caja.id) !== 1) // Ocultar caja de Lucas (id 1)
+                .filter((caja) => isAdmin || Number(caja.id) !== 1) // Ocultar caja de Lucas (id 1)
                 .map((caja) => (
                   <Option key={caja.id} value={caja.id}>
                     {caja.nombre}
@@ -2211,7 +2225,7 @@ const Ventas = () => {
                     loading={loadingCajas}
                   >
                     {cajas
-                      .filter((caja) => Number(caja.id) !== 1) // ⬅️ oculta la caja id 0
+                      .filter((caja) => isAdmin || Number(caja.id) !== 1) // ⬅️ oculta la caja id 0
                       .map((caja) => (
                         <Option key={caja.id} value={caja.id}>
                           {caja.nombre}
