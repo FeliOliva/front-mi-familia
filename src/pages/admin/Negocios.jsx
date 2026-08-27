@@ -35,8 +35,11 @@ const useIsMobile = () => {
 const Negocios = () => {
   const isMobile = useIsMobile();
   const { id } = useParams();
-  // Solo el admin (rol 0) puede crear negocios y marcarlos como privados
-  const isAdmin = Number(localStorage.getItem("rol")) === 0;
+  const userRole = Number(localStorage.getItem("rol"));
+  const isAdmin = userRole === 0;
+  // Admin y encargado de ventas pueden crear negocios; solo el admin puede
+  // marcarlos como privados (esa opción se oculta al resto).
+  const puedeCrearNegocio = userRole === 0 || userRole === 1;
 
   const [negocios, setNegocios] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -310,7 +313,7 @@ const Negocios = () => {
           <h2 className="text-lg font-semibold text-gray-900 mb-2 sm:mb-0">
             Negocios
           </h2>
-          {isAdmin && (
+          {puedeCrearNegocio && (
             <Button type="primary" onClick={openAddModal}>
               Agregar Negocio
             </Button>
