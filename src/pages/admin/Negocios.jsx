@@ -10,6 +10,10 @@ import {
   Checkbox,
   Space,
   Tag,
+  Card,
+  Empty,
+  Spin,
+  Pagination,
 } from "antd";
 import { useParams } from "react-router-dom";
 import { api } from "../../services/api";
@@ -360,6 +364,101 @@ const Negocios = () => {
             Listado de Negocios
           </h2>
         </div>
+        {/* En mobile la tabla medía 664px contra 263px utiles y la columna
+            Acciones quedaba fuera de pantalla. Cards, igual que Cheques. */}
+        {isMobile ? (
+          <div className="px-3 py-4 space-y-3">
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <Spin />
+              </div>
+            ) : negociosPaginados.length === 0 ? (
+              <Empty description="No hay negocios para mostrar" />
+            ) : (
+              <>
+                {negociosPaginados.map((n) => (
+                  <Card
+                    key={n.id}
+                    className="shadow-sm"
+                    styles={{ body: { padding: 14 } }}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500">Nombre</p>
+                        <p className="font-semibold break-words">
+                          {n.nombre}
+                          {n.esPrivado && (
+                            <Tag color="purple" style={{ marginLeft: 6 }}>
+                              Privado
+                            </Tag>
+                          )}
+                        </p>
+                      </div>
+                      <Tag color={n.estado === 1 ? "green" : "default"}>
+                        {n.estado === 1 ? "Activo" : "Inactivo"}
+                      </Tag>
+                    </div>
+
+                    <div className="mb-2">
+                      <p className="text-xs text-gray-500">Dirección</p>
+                      <p className="text-gray-900 break-words">
+                        {n.direccion || "-"}
+                      </p>
+                    </div>
+
+                    <div className="flex gap-4 text-sm text-gray-600 mb-3">
+                      <span>
+                        Cta. Cte.: {n.esCuentaCorriente ? "Sí" : "No"}
+                      </span>
+                      <span>Editable: {n.esEditable ? "Sí" : "No"}</span>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Button
+                        size="large"
+                        icon={<EditOutlined />}
+                        onClick={() => openEditModal(n)}
+                        style={{ flex: 1, minWidth: 0 }}
+                      >
+                        Editar
+                      </Button>
+                      {n.estado === 1 ? (
+                        <Button
+                          danger
+                          size="large"
+                          icon={<StopOutlined />}
+                          onClick={() => handleDeshabilitar(n.id)}
+                          style={{ flex: 1, minWidth: 0, paddingInline: 8 }}
+                        >
+                          Deshabilitar
+                        </Button>
+                      ) : (
+                        <Button
+                          type="primary"
+                          size="large"
+                          icon={<CheckOutlined />}
+                          onClick={() => handleHabilitar(n.id)}
+                          style={{ flex: 1 }}
+                        >
+                          Habilitar
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+                <Pagination
+                  current={currentPage}
+                  pageSize={pageSize}
+                  total={negociosOrdenados.length}
+                  onChange={(page) => setCurrentPage(page)}
+                  size="small"
+                  showSizeChanger={false}
+                  className="flex justify-center mt-4"
+                />
+              </>
+            )}
+          </div>
+        ) : (
         <div className="overflow-x-auto px-4 py-4">
           <Table
             dataSource={negociosPaginados}
@@ -383,6 +482,7 @@ const Negocios = () => {
             scroll={{ x: "max-content" }} // ← igual que Productos
           />
         </div>
+        )}
       </div>
 
       {/* Modal agregar/editar — mismo modal para ambos flujos */}

@@ -10,6 +10,11 @@ import {
   InputNumber,
   Select,
   Checkbox,
+  Card,
+  Tag,
+  Empty,
+  Spin,
+  Pagination,
 } from "antd";
 import { api } from "../../services/api";
 import {
@@ -399,6 +404,101 @@ const Productos = () => {
             Listado de Productos
           </h2>
         </div>
+        {/* En mobile la tabla se pasaba del ancho util y cortaba Precio y
+            Acciones. Cards, igual que Cheques. */}
+        {isMobile ? (
+          <div className="px-3 py-4 space-y-3">
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <Spin />
+              </div>
+            ) : productos.length === 0 ? (
+              <Empty description="No hay productos para mostrar" />
+            ) : (
+              <>
+                {productos.map((p) => (
+                  <Card
+                    key={p.id}
+                    className="shadow-sm"
+                    styles={{ body: { padding: 14 } }}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1 min-w-0 pr-2">
+                        <p className="text-xs text-gray-500">Nombre</p>
+                        <p className="font-semibold break-words">{p.nombre}</p>
+                      </div>
+                      <Tag color={p.estado === 1 ? "green" : "default"}>
+                        {p.estado === 1 ? "Activo" : "Inactivo"}
+                      </Tag>
+                    </div>
+
+                    <div className="flex justify-between items-end mb-3">
+                      <div>
+                        <p className="text-xs text-gray-500">Unidad</p>
+                        <p className="text-gray-900">
+                          {p.tipoUnidad?.tipo || p.tipounidad?.tipo || "-"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">Precio</p>
+                        <p className="text-lg font-semibold text-blue-600">
+                          {(p.precio ?? 0).toLocaleString("es-AR", {
+                            style: "currency",
+                            currency: "ARS",
+                            maximumFractionDigits: 0,
+                          })}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Button
+                        size="large"
+                        icon={<EditOutlined />}
+                        onClick={() => openEditModal(p)}
+                        style={{ flex: 1 }}
+                      >
+                        Editar
+                      </Button>
+                      {p.estado === 1 ? (
+                        <Button
+                          danger
+                          size="large"
+                          icon={<StopOutlined />}
+                          onClick={() => toggleProductos(p.id, p.estado)}
+                          style={{ flex: 1 }}
+                        >
+                          Desactivar
+                        </Button>
+                      ) : (
+                        <Button
+                          type="primary"
+                          size="large"
+                          icon={<CheckOutlined />}
+                          onClick={() => toggleProductos(p.id, p.estado)}
+                          style={{ flex: 1 }}
+                        >
+                          Activar
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+                <Pagination
+                  current={currentPage}
+                  pageSize={pageSize}
+                  total={total}
+                  onChange={(page) =>
+                    fetchProductos(page, debouncedQ, filtroEstado)
+                  }
+                  size="small"
+                  showSizeChanger={false}
+                  className="flex justify-center mt-4"
+                />
+              </>
+            )}
+          </div>
+        ) : (
         <div className="overflow-x-auto px-4 py-4">
           <Table
             dataSource={productos}
@@ -419,6 +519,7 @@ const Productos = () => {
             scroll={{ x: "max-content" }}
           />
         </div>
+        )}
       </div>
 
       {/* Modal agregar/editar */}

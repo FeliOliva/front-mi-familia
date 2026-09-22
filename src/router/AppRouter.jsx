@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -28,7 +28,6 @@ const AppRouter = () => {
   const expiry = localStorage.getItem("tokenExpiry");
   const userRole = Number(localStorage.getItem("rol"));
   const now = Date.now();
-  const [isMobile, setIsMobile] = useState(false);
 
   const isAuthenticated = token && expiry && now < Number(expiry);
   
@@ -47,28 +46,21 @@ const AppRouter = () => {
   const isEncargadoVentas = userRole === 1; // <--- NUEVO
   const isDelivery = userRole >= 2 && userRole !== 3; // solo para repartidor
 
-  console.log("User Role:", userRole);
-  useEffect(() => {
-    const checkIsMobile = () => {
-      setIsMobile(window.innerWidth <= 768);
-    };
-
-    checkIsMobile();
-    window.addEventListener("resize", checkIsMobile);
-
-    return () => window.removeEventListener("resize", checkIsMobile);
-  }, []);
 
   return (
     <Router>
       <Routes>
         {isAuthenticated ? (
           <>
-            {isDelivery && isMobile ? (
-              // Mobile view para repartidor
+            {isDelivery ? (
+              // El repartidor va SIEMPRE a su vista, sin importar el ancho de
+              // pantalla: antes la condicion incluia `&& isMobile`, asi que en
+              // desktop (o al girar a horizontal / usar tablet) caia en la rama
+              // del panel y solo lo frenaba un catch-all de Unauthorized.
+              // No tiene acceso a ventas ni a ninguna otra seccion del panel.
               <>
                 <Route path="/repartidor" element={<Repartidor />} />
-                <Route path="*" element={<Navigate to="/repartidor" />} />
+                <Route path="*" element={<Navigate to="/repartidor" replace />} />
               </>
             ) : (
               // Vista escritorio (admin, manager o encargado de ventas)
@@ -107,12 +99,8 @@ const AppRouter = () => {
                   </>
                 )}
 
-                {/* Delivery en vista escritorio (no permitido) */}
-                {isDelivery && !isMobile && (
-                  <>
-                    <Route path="*" element={<Unauthorized />} />
-                  </>
-                )}
+                {/* Ya no hace falta la rama de "delivery en escritorio": esta
+                    seccion solo se monta para roles que no son repartidor. */}
 
                 {/* Si no tiene permisos */}
                 {!(isAdmin || isEncargadoVentas || isDelivery) && (

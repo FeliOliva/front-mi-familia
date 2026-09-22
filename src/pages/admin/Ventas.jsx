@@ -24,6 +24,8 @@ import {
   InputNumber,
   Row,
   Col,
+  Spin,
+  Pagination,
 } from "antd";
 import { api } from "../../services/api";
 import {
@@ -2062,6 +2064,142 @@ const Ventas = () => {
             </Tooltip>
           </div>
         </div>
+        {/* En mobile la tabla medía 705px contra 263px utiles: solo se veian
+            3 de 7 columnas y quedaban ocultos Total, Fecha, Pago y Acciones.
+            Se usa el mismo patron de cards que Cheques. */}
+        {isMobile ? (
+          <div className="px-3 py-4 space-y-3">
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <Spin />
+              </div>
+            ) : ventasFiltradas.length === 0 ? (
+              <Empty description="No hay ventas para mostrar" />
+            ) : (
+              <>
+                {ventasFiltradas
+                  .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                  .map((venta) => {
+                    const esCC = venta.estadoPago === 4;
+                    const pendiente =
+                      venta.estadoPago === 1 || venta.estadoPago === 3;
+                    const borde = esCC
+                      ? "#1890ff"
+                      : pendiente
+                        ? "#faad14"
+                        : "#52c41a";
+                    return (
+                      <Card
+                        key={venta.id}
+                        className="shadow-sm"
+                        style={{ borderLeft: `4px solid ${borde}` }}
+                        styles={{ body: { padding: 14 } }}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="text-xs text-gray-500">Nro. Venta</p>
+                            <p className="font-semibold">{venta.nroVenta}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-gray-500">Total</p>
+                            <p className="text-lg font-semibold text-blue-600">
+                              {typeof venta.total === "number"
+                                ? `$${venta.total.toLocaleString("es-AR")}`
+                                : venta.total}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mb-2">
+                          <p className="text-xs text-gray-500">Negocio</p>
+                          <p className="text-gray-900">
+                            {venta.negocioNombre || "-"}
+                          </p>
+                        </div>
+
+                        <div className="flex gap-4 text-sm text-gray-600 mb-3">
+                          <span>Caja: {venta.cajaNombre || "-"}</span>
+                          <span>
+                            {venta.fechaCreacion
+                              ? dayjs(venta.fechaCreacion).format("DD/MM/YYYY")
+                              : "-"}
+                          </span>
+                        </div>
+
+                        {/* Columna "Pago": se reusa el render de la tabla para
+                            no duplicar la logica de estados. */}
+                        <div className="mb-3">
+                          {columns
+                            .find((c) => c.key === "pago")
+                            ?.render(null, venta)}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            size="large"
+                            icon={<EyeOutlined />}
+                            onClick={() => handleVerDetalle(venta)}
+                          >
+                            Ver
+                          </Button>
+                          <Button
+                            size="large"
+                            icon={<EditOutlined />}
+                            onClick={() => editarVenta(venta)}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            size="large"
+                            icon={<PrinterOutlined />}
+                            onClick={async () => {
+                              try {
+                                await generarPDF(venta);
+                              } catch (error) {
+                                message.error(
+                                  "No se pudo generar el PDF: " + error.message,
+                                );
+                              }
+                            }}
+                          >
+                            Imprimir
+                          </Button>
+                          <Button
+                            size="large"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => {
+                              Modal.confirm({
+                                title: "¿Estás seguro?",
+                                content:
+                                  "Esta acción eliminará la venta permanentemente.",
+                                okText: "Sí, eliminar",
+                                okType: "danger",
+                                cancelText: "Cancelar",
+                                onOk: () =>
+                                  eliminarVenta(venta.id, venta.cajaId),
+                              });
+                            }}
+                          >
+                            Eliminar
+                          </Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                <Pagination
+                  current={currentPage}
+                  pageSize={pageSize}
+                  total={totalVentas}
+                  onChange={(page) => setCurrentPage(page)}
+                  size="small"
+                  showSizeChanger={false}
+                  className="flex justify-center mt-4"
+                />
+              </>
+            )}
+          </div>
+        ) : (
         <div className="overflow-x-auto px-4 py-4">
           <Table
             dataSource={ventasFiltradas}
@@ -2096,6 +2234,7 @@ const Ventas = () => {
             style={{ marginTop: 20 }}
           />
         </div>
+        )}
       </div>
 
       <Modal
