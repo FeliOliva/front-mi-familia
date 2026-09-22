@@ -1511,6 +1511,7 @@ const Entregas = ({ onOpenResumen }) => {
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   disabled={payLater}
                   type="number"
+                  inputMode="decimal"
                   min="0"
                   step="0.01"
                 />
@@ -1725,6 +1726,7 @@ const Entregas = ({ onOpenResumen }) => {
                 value={editMontoEntrega ?? ""}
                 onChange={(e) => setEditMontoEntrega(e.target.value)}
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.01"
                 style={{ width: "100%" }}

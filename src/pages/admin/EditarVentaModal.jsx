@@ -370,6 +370,7 @@ const EditarVentaModal = ({
               <InputNumber
                 min={0}
                 step={10}
+                inputMode="decimal"
                 value={item.precio}
                 onChange={(value) => actualizarPrecio(index, value)}
                 size={isMobile ? "small" : "middle"}
@@ -402,6 +403,7 @@ const EditarVentaModal = ({
               min={getMinByUnidad()}
               step={getStepByUnidad(item._unidad || item.tipoUnidad || "UNIDAD")}
               precision={2}
+              inputMode="decimal"
               value={item.cantidad}
               onChange={(value) => actualizarCantidad(index, value)}
               size={isMobile ? "middle" : "large"}
@@ -484,6 +486,7 @@ const EditarVentaModal = ({
                 min={0.1}
                 step={0.1}
                 precision={2}
+                inputMode="decimal"
                 value={cantidad}
                 onChange={(value) => setCantidad(value)}
                 addonBefore="Cant."

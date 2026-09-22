@@ -466,6 +466,7 @@ const Productos = () => {
               style={{ width: "100%" }}
               min={0}
               step={100}
+              inputMode="decimal"
               placeholder="Ej: 2000"
             />
           </Form.Item>

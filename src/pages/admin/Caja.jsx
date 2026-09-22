@@ -1117,6 +1117,7 @@ const CierreCajaGeneral = () => {
           onChange={(e) => setMontoEditando(e.target.value)}
           prefix="$"
           type="number"
+          inputMode="decimal"
           min="0"
         />
       </Modal>

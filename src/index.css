@@ -1,3 +1,30 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Mobile: evitar el zoom automático de iOS al enfocar un campo.
+ *
+ * Safari hace zoom sobre cualquier input con font-size < 16px y no lo revierte
+ * al salir del campo: la página queda ampliada y el header (con la hamburguesa
+ * del menú lateral) queda fuera del viewport.
+ *
+ * Se sube a 16px en vez de usar maximum-scale/user-scalable=no, que
+ * desactivaría el zoom manual del usuario.
+ */
+@media (max-width: 768px) {
+  input,
+  textarea,
+  select,
+  .ant-input,
+  .ant-input-affix-wrapper > input.ant-input,
+  .ant-input-number-input,
+  .ant-select-selection-search-input,
+  .ant-select-selection-item,
+  .ant-select-selection-placeholder,
+  .ant-picker-input > input,
+  .ant-modal-body input,
+  .ant-drawer-body input {
+    font-size: 16px !important;
+  }
+}

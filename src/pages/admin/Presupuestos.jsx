@@ -905,6 +905,7 @@ const Presupuestos = () => {
           <InputNumber
             min={0}
             step={10}
+            inputMode="decimal"
             value={item.precio}
             onChange={(value) => actualizarPrecio(index, value)}
             size={isMobile ? "small" : "middle"}
@@ -933,6 +934,7 @@ const Presupuestos = () => {
               min={0.1}
               step={getStepByUnidad(item._unidad || item.tipoUnidad || "UNIDAD")}
               precision={2}
+              inputMode="decimal"
               value={item.cantidad}
               onChange={(value) => actualizarCantidad(index, value)}
               size={isMobile ? "middle" : "large"}
@@ -1055,6 +1057,7 @@ const Presupuestos = () => {
                 min={0.1}
                 step={0.5}
                 precision={2}
+                inputMode="decimal"
                 value={cantidad}
                 onChange={(value) => setCantidad(value)}
                 onKeyDown={handleCantidadKeyDown}

@@ -1891,6 +1891,7 @@ const Ventas = () => {
               <InputNumber
                 min={0}
                 step={10}
+                inputMode="decimal"
                 value={item.precio}
                 onChange={(value) => actualizarPrecio(index, value)}
                 size={isMobile ? "small" : "middle"}
@@ -1925,6 +1926,7 @@ const Ventas = () => {
                 item._unidad || item.tipoUnidad || "UNIDAD",
               )}
               precision={2}
+              inputMode="decimal"
               value={item.cantidad}
               onChange={(value) => actualizarCantidad(index, value)}
               size={isMobile ? "middle" : "large"}
@@ -2318,6 +2320,7 @@ const Ventas = () => {
                     min={0.1}
                     step={0.1}
                     precision={2}
+                    inputMode="decimal"
                     value={cantidad}
                     onChange={(value) => setCantidad(value)}
                     onKeyDown={handleCantidadKeyDown}
@@ -2548,6 +2551,7 @@ const Ventas = () => {
               min={0}
               step={1}
               precision={0}
+              inputMode="numeric"
               disabled={pagoOtroDia}
             />
           </Form.Item>

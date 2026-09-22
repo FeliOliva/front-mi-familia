@@ -656,6 +656,7 @@ const Pedidos = () => {
                               min={0.1}
                               step={getStepByUnidad(item._unidad || item.tipoUnidad || "UNIDAD")}
                               precision={2}
+                              inputMode="decimal"
                               value={item.cantidad}
                               onChange={(value) => actualizarCantidad(index, value)}
                               size={isMobile ? "middle" : "large"}
@@ -844,6 +845,7 @@ const Pedidos = () => {
                     min={0.1}
                     step={0.1}
                     precision={2}
+                    inputMode="decimal"
                     value={cantidad}
                     onChange={(value) => setCantidad(value)}
                     addonBefore="Cant."

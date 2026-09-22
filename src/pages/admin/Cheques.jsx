@@ -455,6 +455,7 @@ const Cheques = () => {
             <InputNumber
               min={0.01}
               step={1}
+              inputMode="decimal"
               style={{ width: "100%" }}
               placeholder="Monto"
             />

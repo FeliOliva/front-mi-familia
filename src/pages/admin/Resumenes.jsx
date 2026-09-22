@@ -1539,6 +1539,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 value={editMonto ?? ""}
                 onChange={(e) => setEditMonto(e.target.value)}
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.01"
                 style={{ width: "100%" }}
@@ -1620,6 +1621,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 value={editMonto ?? ""}
                 onChange={(e) => setEditMonto(e.target.value)}
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="0.01"
                 style={{ width: "100%" }}
@@ -1754,6 +1756,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 }
               }}
               type="number"
+              inputMode="decimal"
               step="0.01"
               min="0.01"
               style={{ width: "100%" }}
@@ -1849,6 +1852,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
               value={montoNotaCredito}
               onChange={setMontoNotaCredito}
               min={1}
+              inputMode="decimal"
               style={{ width: "100%" }}
               placeholder="Monto"
             />
@@ -1886,6 +1890,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
               value={montoSaldoInicial ?? ""}
               onChange={(e) => setMontoSaldoInicial(e.target.value)}
               type="number"
+              inputMode="decimal"
               min="0"
               step="0.01"
               style={{ width: "100%" }}

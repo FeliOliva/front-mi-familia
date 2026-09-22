@@ -1460,6 +1460,7 @@ const EntregasEncargado = () => {
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   disabled={payLater}
                   type="number"
+                  inputMode="decimal"
                   min="0"
                   step="0.01"
                 />

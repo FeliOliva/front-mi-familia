@@ -321,6 +321,7 @@ const Gastos = () => {
           >
             <Input
               type="number"
+              inputMode="decimal"
               min="0"
               step="0.01"
               placeholder="Ej: 5000"

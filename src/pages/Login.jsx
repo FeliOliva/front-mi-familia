@@ -58,8 +58,8 @@ const Login = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-900">
-      <Card title="Iniciar Sesión" className="w-96 shadow-lg">
+    <div className="flex items-center justify-center min-h-screen bg-gray-900 p-4">
+      <Card title="Iniciar Sesión" className="w-full max-w-sm shadow-lg">
         <Form onFinish={onFinish} layout="vertical">
           <Form.Item
             label="Usuario"
