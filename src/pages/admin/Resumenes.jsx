@@ -11,6 +11,9 @@ import {
   Drawer,
   Input,
   Form,
+  Card,
+  Empty,
+  Pagination,
 } from "antd";
 import dayjs from "dayjs";
 import { api } from "../../services/api";
@@ -271,6 +274,9 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // Paginacion de la lista de movimientos en mobile (la tabla paginaba de a 5)
+  const [pageMovimientosMobile, setPageMovimientosMobile] = useState(1);
 
   // Determinar el tipo de pantalla
   const isMobile = screenWidth < 768;
@@ -1464,6 +1470,101 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Movimientos</h2>
         </div>
+        {/* En mobile las 4 columnas seguian dando 540px contra 263px utiles
+            y se cortaban Total y Acciones. Cards, igual que Cheques. */}
+        {isMobile ? (
+          <div className="px-3 py-4 space-y-3">
+            {transacciones.length === 0 ? (
+              <Empty description="No hay datos disponibles" />
+            ) : (
+              <>
+                {transacciones
+                  .slice(
+                    (pageMovimientosMobile - 1) * 5,
+                    pageMovimientosMobile * 5,
+                  )
+                  .map((t) => {
+                    const saldo = t.saldo_restante;
+                    const colorSaldo =
+                      saldo > 0 ? "#cf1322" : saldo < 0 ? "#389e0d" : "#666";
+                    return (
+                      <Card
+                        key={`${t.tipo}-${t.id}`}
+                        size="small"
+                        className="shadow-sm"
+                        styles={{ body: { padding: 12 } }}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="font-semibold">{t.tipo}</p>
+                            <p className="text-xs text-gray-500">
+                              {dayjs(t.fecha).format("DD/MM/YYYY")}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-gray-500">Total</p>
+                            <p className="text-lg font-semibold">
+                              ${t.monto_formateado}
+                            </p>
+                          </div>
+                        </div>
+
+                        {saldo !== null && saldo !== undefined && (
+                          <div className="flex justify-between items-center py-2 border-t mb-2">
+                            <span className="text-sm text-gray-500">Saldo</span>
+                            <span
+                              style={{ color: colorSaldo, fontWeight: 600 }}
+                            >
+                              {saldo >= 0
+                                ? `$${saldo.toLocaleString("es-AR")}`
+                                : `-$${Math.abs(saldo).toLocaleString("es-AR")}`}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <Button
+                            size="large"
+                            icon={<EyeOutlined />}
+                            onClick={() => handleVerDetalle(t)}
+                            style={{ flex: 1, minWidth: 0 }}
+                          >
+                            Ver
+                          </Button>
+                          <Button
+                            size="large"
+                            icon={<EditOutlined />}
+                            onClick={() => handleEditar(t)}
+                            style={{ flex: 1, minWidth: 0 }}
+                          >
+                            Editar
+                          </Button>
+                          <Button
+                            danger
+                            size="large"
+                            icon={<DeleteOutlined />}
+                            onClick={() =>
+                              handleEliminar(t.id, t.tipo, t)
+                            }
+                            aria-label="Eliminar movimiento"
+                          />
+                        </div>
+                      </Card>
+                    );
+                  })}
+                <Pagination
+                  current={pageMovimientosMobile}
+                  pageSize={5}
+                  total={transacciones.length}
+                  onChange={setPageMovimientosMobile}
+                  size="small"
+                  simple
+                  className="flex justify-center mt-4"
+                />
+              </>
+            )}
+          </div>
+        ) : (
         <div className="overflow-x-auto px-4 py-4">
           <Table
             dataSource={transacciones}
@@ -1479,6 +1580,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
             locale={{ emptyText: "No hay datos disponibles" }}
           />
         </div>
+        )}
       </div>
 
       {/* Modal para ver detalles */}

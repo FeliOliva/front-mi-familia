@@ -19,6 +19,8 @@ import {
   Row,
   Col,
   Tooltip,
+  Spin,
+  Pagination,
 } from "antd";
 import { api } from "../../services/api";
 import {
@@ -175,6 +177,8 @@ const generarPDF = (pedido) => {
 
 const Pedidos = () => {
   const isMobile = useIsMobile();
+  // Paginacion de la lista en mobile (la tabla paginaba de a 10)
+  const [pagePedidosMobile, setPagePedidosMobile] = useState(1);
   const [pedidos, setPedidos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -710,6 +714,102 @@ const Pedidos = () => {
             Listado de Pedidos
           </h2>
         </div>
+        {/* Cards en mobile, igual que el resto del panel: la tabla usaba
+            scroll x max-content y dejaba las acciones fuera de pantalla. */}
+        {isMobile ? (
+          <div className="px-3 py-4 space-y-3">
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <Spin />
+              </div>
+            ) : pedidos.length === 0 ? (
+              <Empty description="No hay pedidos" />
+            ) : (
+              <>
+                {pedidos
+                  .slice(
+                    (pagePedidosMobile - 1) * 10,
+                    pagePedidosMobile * 10,
+                  )
+                  .map((p) => (
+                    <Card
+                      key={p.id}
+                      size="small"
+                      className="shadow-sm"
+                      styles={{ body: { padding: 12 } }}
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold break-words">
+                            {p.nroPedido || `#${p.id}`}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {p.fechaCreacion
+                              ? dayjs(p.fechaCreacion).format("DD/MM/YYYY HH:mm")
+                              : "-"}
+                          </p>
+                        </div>
+                        <Tag color="purple">
+                          {p.detallepedido?.length || 0} productos
+                        </Tag>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          size="large"
+                          icon={<EyeOutlined />}
+                          onClick={() => handleVerDetalle(p)}
+                        >
+                          Ver
+                        </Button>
+                        <Button
+                          size="large"
+                          icon={<EditOutlined />}
+                          onClick={() => editarPedido(p)}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          size="large"
+                          icon={<FilePdfOutlined />}
+                          onClick={() => generarPDF(p)}
+                        >
+                          PDF
+                        </Button>
+                        <Button
+                          danger
+                          size="large"
+                          icon={<DeleteOutlined />}
+                          onClick={() => {
+                            Modal.confirm({
+                              title: "¿Eliminar pedido?",
+                              content:
+                                "Esta acción eliminará el pedido permanentemente.",
+                              okText: "Sí, eliminar",
+                              okType: "danger",
+                              cancelText: "No",
+                              onOk: () => eliminarPedido(p.id),
+                            });
+                          }}
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                <Pagination
+                  current={pagePedidosMobile}
+                  pageSize={10}
+                  total={pedidos.length}
+                  onChange={setPagePedidosMobile}
+                  size="small"
+                  simple
+                  className="flex justify-center mt-4"
+                />
+              </>
+            )}
+          </div>
+        ) : (
         <div className="overflow-x-auto px-4 py-4">
           <Table
             dataSource={pedidos}
@@ -726,6 +826,7 @@ const Pedidos = () => {
             scroll={{ x: "max-content" }}
           />
         </div>
+        )}
       </div>
 
       {/* Modal de nuevo/editar pedido */}

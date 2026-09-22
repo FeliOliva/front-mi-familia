@@ -13,6 +13,7 @@ import {
   Modal,
   Radio,
   Select,
+  Pagination,
 } from "antd";
 import {
   DollarOutlined,
@@ -670,6 +671,10 @@ const Estadisticas = () => {
   const [productosVendidos, setProductosVendidos] = useState(null);
   const [loadingProductos, setLoadingProductos] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  // Paginacion de las listas en mobile: las tablas paginaban de a 10/20 y las
+  // cards renderizaban todo junto (201 clientes de una).
+  const [pageClientesMobile, setPageClientesMobile] = useState(1);
+  const [pageProductosMobile, setPageProductosMobile] = useState(1);
   const [printingId, setPrintingId] = useState(null);
   const [printingGeneral, setPrintingGeneral] = useState(false);
   const [printingDiario, setPrintingDiario] = useState(false);
@@ -1290,6 +1295,92 @@ const Estadisticas = () => {
             <Col xs={24} lg={14}>
               <Card title="Clientes (por ventas)" className="mb-4" bodyStyle={{ padding: isMobile ? 12 : 16 }}>
                 {data.todosNegocios?.length > 0 ? (
+                  isMobile ? (
+                    /* La tabla medía 720px contra 245px utiles y se cortaban
+                       Saldo y Acciones: justo el saldo de cuenta corriente,
+                       que es el dato que se mira desde el celular. */
+                    <div className="space-y-3">
+                      {data.todosNegocios
+                        .slice(
+                          (pageClientesMobile - 1) * 10,
+                          pageClientesMobile * 10,
+                        )
+                        .map((c) => {
+                        const ventas = Number(c.totalCompras || 0);
+                        const saldoInicial = Number(c.saldoInicial || 0);
+                        const pagos = Number(c.totalPagos || 0);
+                        const nc = Number(c.totalNC || 0);
+                        const saldo = ventas + saldoInicial - (pagos + nc);
+                        return (
+                          <Card
+                            key={c.negocioId}
+                            size="small"
+                            className="shadow-sm"
+                            styles={{ body: { padding: 12 } }}
+                          >
+                            <div className="flex justify-between items-start gap-2 mb-2">
+                              <p className="font-semibold break-words flex-1 min-w-0">
+                                {c.nombre}
+                              </p>
+                              <Button
+                                size="large"
+                                icon={<PrinterOutlined />}
+                                onClick={() =>
+                                  handleImprimirResumenCliente(c)
+                                }
+                                loading={printingId === c.negocioId}
+                                aria-label="Imprimir resumen de cuenta"
+                              />
+                            </div>
+
+                            <div className="flex justify-between items-center py-2 border-t border-b mb-2">
+                              <span className="text-sm text-gray-500">
+                                Saldo
+                              </span>
+                              <span
+                                style={{
+                                  color: saldo >= 0 ? "#16a34a" : "#dc2626",
+                                  fontWeight: 700,
+                                  fontSize: 18,
+                                }}
+                              >
+                                {formatMoneda(saldo)}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">S. inicial</span>
+                                <span>{formatMoneda(saldoInicial)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Ventas</span>
+                                <span>{formatMoneda(ventas)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Pagos</span>
+                                <span>{formatMoneda(pagos)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">N.C.</span>
+                                <span>{formatMoneda(nc)}</span>
+                              </div>
+                            </div>
+                          </Card>
+                        );
+                      })}
+                      <Pagination
+                        current={pageClientesMobile}
+                        pageSize={10}
+                        total={data.todosNegocios.length}
+                        onChange={setPageClientesMobile}
+                        size="small"
+                        showSizeChanger={false}
+                        showTotal={(t) => `Total: ${t} clientes`}
+                        className="flex justify-center flex-wrap mt-4"
+                      />
+                    </div>
+                  ) : (
                   <Table
                     columns={columnsClientes}
                     dataSource={data.todosNegocios}
@@ -1305,6 +1396,7 @@ const Estadisticas = () => {
                       size: "small",
                     }}
                   />
+                  )
                 ) : (
                   <p className="text-gray-500 text-sm">No hay ventas de clientes en el período.</p>
                 )}
@@ -1422,6 +1514,68 @@ const Estadisticas = () => {
                 <Spin tip="Cargando productos vendidos..." />
               </div>
             ) : productosVendidos && productosVendidos.productosVendidos && productosVendidos.productosVendidos.length > 0 ? (
+              isMobile ? (
+                /* 720px contra 245px utiles: se cortaban Unidad, Precios y
+                   Subtotal. El total general iba en el summary de la tabla,
+                   asi que se muestra aparte. */
+                <div className="space-y-3">
+                  {productosVendidos.productosVendidos
+                    .slice(
+                      (pageProductosMobile - 1) * 20,
+                      pageProductosMobile * 20,
+                    )
+                    .map((p) => (
+                    <Card
+                      key={`${p.productoNombre}-${p.unidadTipo}`}
+                      size="small"
+                      className="shadow-sm"
+                      styles={{ body: { padding: 12 } }}
+                    >
+                      <div className="flex justify-between items-start gap-2 mb-2">
+                        <p className="font-semibold break-words flex-1 min-w-0">
+                          {p.productoNombre}
+                        </p>
+                        <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                          {formatMoneda(p.subtotal)}
+                        </span>
+                      </div>
+                      <div className="flex gap-4 text-sm text-gray-600 mb-1">
+                        <span>
+                          Cant:{" "}
+                          {formatCantidadPorUnidad(
+                            p.cantidadTotal,
+                            p.unidadTipo,
+                          )}
+                        </span>
+                        <span>{p.unidadTipo}</span>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {p.precioMin !== null && p.precioMax !== null
+                          ? `Min: ${formatMoneda(p.precioMin)} / Max: ${formatMoneda(p.precioMax)} / Prom: ${formatMoneda(Math.round(p.precioPromedio))}`
+                          : `Prom: ${formatMoneda(Math.round(p.precioPromedio))}`}
+                      </p>
+                    </Card>
+                  ))}
+                  <Pagination
+                    current={pageProductosMobile}
+                    pageSize={20}
+                    total={productosVendidos.productosVendidos.length}
+                    onChange={setPageProductosMobile}
+                    size="small"
+                    showSizeChanger={false}
+                    showTotal={(t) => `Total: ${t} productos`}
+                    className="flex justify-center flex-wrap mt-4"
+                  />
+                  {/* Total general del periodo (venia del summary de la tabla):
+                      es de todos los productos, no solo de la pagina visible. */}
+                  <div className="flex justify-between items-center px-3 py-3 bg-gray-50 rounded-lg">
+                    <strong>Total</strong>
+                    <strong style={{ fontSize: 16, color: "#16a34a" }}>
+                      {formatMoneda(productosVendidos.totalSubtotal || 0)}
+                    </strong>
+                  </div>
+                </div>
+              ) : (
               <Table
                 columns={[
                   {
@@ -1500,6 +1654,7 @@ const Estadisticas = () => {
                   </Table.Summary>
                 )}
               />
+              )
             ) : (
               <p className="text-gray-500 text-sm">No hay productos vendidos en el período seleccionado.</p>
             )}

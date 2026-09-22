@@ -20,6 +20,8 @@ import {
   Row,
   Col,
   Tooltip,
+  Spin,
+  Pagination,
 } from "antd";
 import { api } from "../../services/api";
 import {
@@ -198,6 +200,8 @@ const generarPDF = (presupuesto) => {
 
 const Presupuestos = () => {
   const isMobile = useIsMobile();
+  // Paginacion de la lista en mobile (la tabla paginaba de a 8)
+  const [pagePresupuestosMobile, setPagePresupuestosMobile] = useState(1);
   const [presupuestos, setPresupuestos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -1199,6 +1203,136 @@ const Presupuestos = () => {
             Nuevo Presupuesto
           </Button>
         </div>
+        {/* La tabla daba 452px contra 263px utiles: se cortaban Total y las
+            5 acciones. Cards, igual que Cheques. */}
+        {isMobile ? (
+          <div className="px-3 py-4 space-y-3">
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <Spin />
+              </div>
+            ) : presupuestos.length === 0 ? (
+              <Empty description="No hay presupuestos" />
+            ) : (
+              <>
+                {presupuestos
+                  .slice(
+                    (pagePresupuestosMobile - 1) * 8,
+                    pagePresupuestosMobile * 8,
+                  )
+                  .map((p) => (
+                    <Card
+                      key={p.id}
+                      size="small"
+                      className="shadow-sm"
+                      styles={{ body: { padding: 12 } }}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold break-words">
+                            {p.nroPresupuesto || p.id}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {dayjs(p.fechaCreacion).format("DD/MM/YYYY")}
+                            {" · "}
+                            {Array.isArray(p.detallepresupuesto)
+                              ? p.detallepresupuesto.length
+                              : 0}{" "}
+                            items
+                          </p>
+                        </div>
+                        {p.ventaId ? (
+                          <Tag color="green">Convertido</Tag>
+                        ) : (
+                          <Tag color="blue">Presupuesto</Tag>
+                        )}
+                      </div>
+
+                      <div className="mb-2">
+                        <p className="text-xs text-gray-500">Cliente</p>
+                        <p className="text-gray-900 break-words">
+                          {p.negocio?.nombre || (
+                            <span style={{ color: "#999" }}>Sin cliente</span>
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="flex justify-between items-center py-2 border-t mb-3">
+                        <span className="text-sm text-gray-500">Total</span>
+                        <span className="text-lg font-semibold text-blue-600">
+                          ${Number(p.total || 0).toLocaleString("es-AR")}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <Button
+                          size="large"
+                          icon={<EyeOutlined />}
+                          onClick={() => verDetalle(p)}
+                        >
+                          Ver
+                        </Button>
+                        <Button
+                          size="large"
+                          icon={<EditOutlined />}
+                          onClick={() => editarPresupuesto(p)}
+                          disabled={!!p.ventaId}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          size="large"
+                          icon={<FilePdfOutlined />}
+                          onClick={async () => {
+                            try {
+                              const full = await api(
+                                `api/presupuestos/${p.id}`,
+                              );
+                              generarPDF(full);
+                            } catch (err) {
+                              message.error(
+                                "Error al generar PDF: " + err.message,
+                              );
+                            }
+                          }}
+                        >
+                          PDF
+                        </Button>
+                        <Button
+                          size="large"
+                          type="primary"
+                          ghost
+                          icon={<SwapOutlined />}
+                          onClick={() => abrirConvertir(p)}
+                          disabled={!!p.ventaId}
+                        >
+                          Convertir
+                        </Button>
+                      </div>
+                      <Button
+                        danger
+                        size="large"
+                        icon={<DeleteOutlined />}
+                        onClick={() => eliminarPresupuesto(p)}
+                        block
+                      >
+                        Eliminar
+                      </Button>
+                    </Card>
+                  ))}
+                <Pagination
+                  current={pagePresupuestosMobile}
+                  pageSize={8}
+                  total={presupuestos.length}
+                  onChange={setPagePresupuestosMobile}
+                  size="small"
+                  simple
+                  className="flex justify-center mt-4"
+                />
+              </>
+            )}
+          </div>
+        ) : (
         <div className="overflow-x-auto px-4 py-4">
           <Table
             dataSource={presupuestos}
@@ -1211,6 +1345,7 @@ const Presupuestos = () => {
             locale={{ emptyText: "No hay presupuestos" }}
           />
         </div>
+        )}
       </div>
 
       {/* Modal crear/editar */}
