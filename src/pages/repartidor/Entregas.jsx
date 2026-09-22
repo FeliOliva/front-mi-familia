@@ -1228,6 +1228,7 @@ const Entregas = ({ onOpenResumen }) => {
         }
         open={detailsModalVisible}
         onCancel={handleCloseDetailsModal}
+        width={isMobile ? "95%" : 520}
         footer={[
           <Button key="back" onClick={handleCloseDetailsModal}>
             Cerrar
@@ -1392,6 +1393,7 @@ const Entregas = ({ onOpenResumen }) => {
       <Modal
         open={confirmEntregaVisible}
         onCancel={handleCancelEntregar}
+        width={isMobile ? "95%" : 520}
         onOk={handleConfirmEntregar}
         okText="Sí, entregar"
         cancelText="Cancelar"
@@ -1414,6 +1416,7 @@ const Entregas = ({ onOpenResumen }) => {
         }
         open={paymentModalVisible}
         onCancel={handleClosePaymentModal}
+        width={isMobile ? "95%" : 520}
         footer={[
           <Button key="back" onClick={handleClosePaymentModal}>
             Cancelar
@@ -1597,7 +1600,7 @@ const Entregas = ({ onOpenResumen }) => {
         onCancel={() => setModalCierreVisible(false)}
         centered
         width={isMobile ? "95%" : 600}
-        bodyStyle={{ maxHeight: "70vh", overflowY: "auto" }}
+        bodyStyle={{ maxHeight: "70vh", overflowY: "auto", overscrollBehavior: "contain" }}
         footer={[
           <Button key="cancel" onClick={() => setModalCierreVisible(false)}>
             Cancelar
@@ -1713,6 +1716,7 @@ const Entregas = ({ onOpenResumen }) => {
         }
         onCancel={() => setDetalleMetodo(null)}
         footer={null}
+        width={isMobile ? "95%" : 520}
       >
         {detalleMetodo &&
         detalleMetodo.detalles &&
@@ -1731,6 +1735,7 @@ const Entregas = ({ onOpenResumen }) => {
       <Modal
         title="Editar Entrega"
         open={editEntregaModalVisible}
+        width={isMobile ? "95%" : 520}
         onOk={handleGuardarEdicionEntrega}
         onCancel={() => {
           setEditEntregaModalVisible(false);

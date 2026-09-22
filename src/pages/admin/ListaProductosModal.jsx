@@ -243,7 +243,7 @@ const ListaProductosModal = ({ open, onClose }) => {
       open={open}
       onCancel={onClose}
       width={820}
-      styles={{ body: { maxHeight: "72vh", overflowY: "auto" } }}
+      styles={{ body: { maxHeight: "72vh", overflowY: "auto", overscrollBehavior: "contain" } }}
       footer={[
         <span
           key="count"

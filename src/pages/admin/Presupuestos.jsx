@@ -1080,6 +1080,7 @@ const Presupuestos = () => {
                 marginTop: 8,
                 maxHeight: 200,
                 overflow: "auto",
+                overscrollBehavior: "contain",
                 boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
               }}
               styles={{ body: { padding: 0 } }}
@@ -1134,8 +1135,11 @@ const Presupuestos = () => {
               size="small"
               style={{
                 boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                maxHeight: isMobile ? 250 : 300,
-                overflow: "auto",
+                /* Sin scroll propio en mobile: los items miden ~115px y en
+                   250px entraban 2, encadenando scrolls anidados. */
+                maxHeight: isMobile ? "none" : 300,
+                overflow: isMobile ? "visible" : "auto",
+                overscrollBehavior: "contain",
               }}
               styles={{ body: { padding: 0 } }}
             >
@@ -1233,7 +1237,7 @@ const Presupuestos = () => {
           onCancel={cerrarModal}
           width="800px"
           style={{ maxWidth: "800px", top: 60 }}
-          styles={{ body: { padding: 12, maxHeight: "70vh", overflowY: "auto" } }}
+          styles={{ body: { padding: 12, maxHeight: "70vh", overflowY: "auto", overscrollBehavior: "contain" } }}
           footer={[
             <span
               key="hint"

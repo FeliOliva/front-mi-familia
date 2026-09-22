@@ -2157,12 +2157,17 @@ const Ventas = () => {
           </Button>,
         ]}
         width={isMobile ? "95%" : "800px"}
-        style={{ maxWidth: "800px", top: isMobile ? 20 : 100 }}
+        style={{ maxWidth: "800px", top: isMobile ? 8 : 100 }}
         styles={{
           body: {
             padding: "12px",
-            maxHeight: isMobile ? "80vh" : "auto",
+            /* 80vh aplicaba solo al body: sumados header, footer y el offset
+               superior, el modal medía 823px en un viewport de 812 y en
+               pantallas de 667px los botones Cancelar/Finalizar quedaban
+               fuera. Se descuenta el cromo del modal para que entre entero. */
+            maxHeight: isMobile ? "calc(100vh - 190px)" : "auto",
             overflowY: "auto",
+            overscrollBehavior: "contain",
           },
         }}
       >
@@ -2378,6 +2383,7 @@ const Ventas = () => {
                     marginTop: 8,
                     maxHeight: 200,
                     overflow: "auto",
+                    overscrollBehavior: "contain",
                     boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
                   }}
                   styles={{ body: { padding: 0 } }}
@@ -2441,8 +2447,13 @@ const Ventas = () => {
                   size="small"
                   style={{
                     boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                    maxHeight: isMobile ? 250 : 300,
-                    overflow: "auto",
+                    /* En mobile se quita el scroll propio del carrito: cada
+                       item mide ~115px, en 250px entraban 2 y el resto quedaba
+                       tapado por el footer, ademas de encadenar 3 scrolls
+                       anidados. Ahora la lista crece y scrollea el modal. */
+                    maxHeight: isMobile ? "none" : 300,
+                    overflow: isMobile ? "visible" : "auto",
+                    overscrollBehavior: "contain",
                   }}
                   styles={{ body: { padding: 0 } }}
                 >
@@ -2651,7 +2662,7 @@ const Ventas = () => {
           </Button>,
         ]}
         width={isMobile ? "95%" : 600}
-        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto", overscrollBehavior: "contain" } }}
       >
         {cajaInfo ? (
           <div>

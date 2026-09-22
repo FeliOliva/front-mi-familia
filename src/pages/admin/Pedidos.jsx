@@ -760,12 +760,15 @@ const Pedidos = () => {
           </Button>,
         ]}
         width={isMobile ? "95%" : "800px"}
-        style={{ maxWidth: "800px", top: isMobile ? 20 : 100 }}
+        style={{ maxWidth: "800px", top: isMobile ? 8 : 100 }}
         styles={{
           body: {
             padding: "12px",
-            maxHeight: isMobile ? "80vh" : "auto",
+            /* Se descuenta el cromo del modal (header + footer + offset) para
+               que los botones de accion no queden fuera de pantalla. */
+            maxHeight: isMobile ? "calc(100vh - 190px)" : "auto",
             overflowY: "auto",
+            overscrollBehavior: "contain",
           },
         }}
       >
@@ -876,6 +879,7 @@ const Pedidos = () => {
                     marginTop: 8,
                     maxHeight: 200,
                     overflow: "auto",
+                    overscrollBehavior: "contain",
                     boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
                   }}
                   styles={{ body: { padding: 0 } }}
@@ -938,8 +942,11 @@ const Pedidos = () => {
                 size="small"
                 style={{
                   boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                  maxHeight: isMobile ? 250 : 300,
-                  overflow: "auto",
+                  /* Sin scroll propio en mobile: los items miden ~115px y en
+                     250px entraban 2, encadenando scrolls anidados. */
+                  maxHeight: isMobile ? "none" : 300,
+                  overflow: isMobile ? "visible" : "auto",
+                  overscrollBehavior: "contain",
                 }}
                 styles={{ body: { padding: 0 } }}
               >
