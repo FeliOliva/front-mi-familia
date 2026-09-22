@@ -146,12 +146,22 @@ const Repartidor = () => {
                   ¡Hola, {userName}!
                 </span>
               </Badge>
+              {/* 44x44 minimo tactil: es la accion mas destructiva de la
+                  pantalla (cierra la sesion en pleno reparto) y era el target
+                  mas chico, pegado al borde. */}
               <Button
                 type="text"
                 icon={<LogoutOutlined />}
                 onClick={handleLogout}
-                size="small"
                 danger
+                aria-label="Cerrar sesión"
+                style={{
+                  width: 44,
+                  height: 44,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
               />
             </div>
           </div>
@@ -159,7 +169,9 @@ const Repartidor = () => {
 
         {/* Menú de navegación */}
         <nav className="max-w-4xl mx-auto">
-          <div className="flex">
+          {/* gap-1: las 3 tabs eran adyacentes (separacion 0) y el dedo caia
+              facil en la equivocada. */}
+          <div className="flex gap-1 px-1">
             <button
               onClick={() => {
                 setActiveTab("entregas");

@@ -281,9 +281,11 @@
     padding-right: 2px;
   }
 
-  /* Ajustar el botón de pago para pantallas pequeñas */
+  /* En pantallas chicas el target debe crecer, no encogerse: antes era
+     font-size 11px / padding 5px, por debajo del minimo tactil. */
   .pago-button {
-    padding: 5px 8px;
-    font-size: 11px;
+    padding: 10px 14px;
+    font-size: 14px;
+    min-height: 44px;
   }
 }

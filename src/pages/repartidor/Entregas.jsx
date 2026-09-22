@@ -1003,18 +1003,42 @@ const Entregas = ({ onOpenResumen }) => {
               type="primary"
               onClick={handleAbrirCierreCaja}
               disabled={cierrePendiente || !hayDatosParaCerrar()}
+              size={isMobile ? "large" : "middle"}
+              block={isMobile}
             >
               Cerrar Caja
             </Button>
           </Tooltip>
+          {/* En mobile no hay hover, asi que el motivo del boton deshabilitado
+              (que solo vivia en el Tooltip) nunca se podia leer. */}
+          {isMobile && !hayDatosParaCerrar() && (
+            <p className="text-xs text-gray-500 mt-1 text-center">
+              No hay entregas ni cuenta corriente para cerrar.
+            </p>
+          )}
         </div>
 
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex gap-2">
+        {/* El estado de conexion va en su propia linea: en la fila de filtros
+            los 2 selects mas el tag sumaban 385px y "Conectado" quedaba
+            cortado fuera de los 375px de pantalla. */}
+        <div className="flex justify-end mb-1">
+          {wsConnected ? (
+            <Tag color="success" icon={<CheckCircleOutlined />}>
+              Conectado
+            </Tag>
+          ) : (
+            <Tag color="error" icon={<ClockCircleOutlined />}>
+              Desconectado
+            </Tag>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex gap-2 flex-1 min-w-0">
             <Select
               value={estadoFiltro}
               onChange={setEstadoFiltro}
-              style={{ width: 110 }}
+              style={{ width: 110, flexShrink: 0 }}
+              size={isMobile ? "large" : "middle"}
               placeholder="Filtrar por estado"
               suffixIcon={<FilterOutlined />}
             >
@@ -1027,22 +1051,14 @@ const Entregas = ({ onOpenResumen }) => {
             <Select
               value={orden}
               onChange={setOrden}
-              style={{ width: 175, marginRight: 8 }}
+              style={{ flex: 1, minWidth: 140 }}
+              size={isMobile ? "large" : "middle"}
               placeholder="Ordenar"
             >
               <Select.Option value="desc">Más reciente primero</Select.Option>
               <Select.Option value="asc">Más antigua primero</Select.Option>
             </Select>
           </div>
-          {wsConnected ? (
-            <Tag color="success" icon={<CheckCircleOutlined />}>
-              Conectado
-            </Tag>
-          ) : (
-            <Tag color="error" icon={<ClockCircleOutlined />}>
-              Desconectado
-            </Tag>
-          )}
         </div>
         <div className="space-y-4">
           {(() => {
@@ -1122,12 +1138,16 @@ const Entregas = ({ onOpenResumen }) => {
                     </div>
                   </div>
 
-                  {/* Botones en una nueva fila para mejor responsividad */}
-                  <div className="flex justify-end mt-2">
-                    <div className="flex gap-2">
+                  {/* Botones: en mobile ocupan el ancho completo y se
+                      reparten el espacio, en vez de quedar apiñados a la
+                      derecha con 24px de alto. */}
+                  <div className="flex mt-3">
+                    <div className="flex gap-3 w-full flex-wrap">
                       <Button
                         type="default"
-                        size="small"
+                        size={isMobile ? "large" : "small"}
+                        block={isMobile}
+                        style={isMobile ? { flex: 1, minWidth: 130 } : undefined}
                         onClick={() => handleViewDetails(entrega)}
                       >
                         Ver Detalles
@@ -1138,7 +1158,11 @@ const Entregas = ({ onOpenResumen }) => {
                         entrega.estado === 5) && (
                         <Button
                           type="primary"
-                          size="small"
+                          size={isMobile ? "large" : "small"}
+                          block={isMobile}
+                          style={
+                            isMobile ? { flex: 1, minWidth: 130 } : undefined
+                          }
                           onClick={() => handleOpenPaymentModal(entrega)}
                         >
                           {entrega.estado === 5 ? "Completar Pago" : "Cobrar"}
@@ -1146,7 +1170,11 @@ const Entregas = ({ onOpenResumen }) => {
                       )}
                       {entrega.estado === 4 && (
                         <Button
-                          size="small"
+                          size={isMobile ? "large" : "small"}
+                          block={isMobile}
+                          style={
+                            isMobile ? { flex: 1, minWidth: 130 } : undefined
+                          }
                           onClick={() => {
                             const negocioId = entrega.negocio?.id;
                             if (!negocioId) return;
@@ -1164,7 +1192,11 @@ const Entregas = ({ onOpenResumen }) => {
                         !entrega.entregadaCuentaCorriente && (
                           <Button
                             type="primary"
-                            size="small"
+                            size={isMobile ? "large" : "small"}
+                            block={isMobile}
+                            style={
+                              isMobile ? { flex: 1, minWidth: 130 } : undefined
+                            }
                             onClick={() =>
                               handleEntregarCuentaCorriente(entrega)
                             }

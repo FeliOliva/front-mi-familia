@@ -234,13 +234,16 @@ const Gastos = () => {
                 </div>
               </div>
 
-              <div className="flex gap-2 mt-3">
+              {/* Editar ocupa el espacio disponible y Eliminar queda acotado y
+                  mas separado: antes eran iguales (135x24) a 8px, y Eliminar
+                  es destructivo. */}
+              <div className="flex gap-4 mt-3">
                 <Button
                   type="default"
                   icon={<EditOutlined />}
-                  size="small"
+                  size="large"
                   onClick={() => handleEdit(gasto)}
-                  block
+                  style={{ flex: 1 }}
                 >
                   Editar
                 </Button>
@@ -250,9 +253,12 @@ const Gastos = () => {
                   okText="Sí"
                   cancelText="No"
                 >
-                  <Button danger icon={<DeleteOutlined />} size="small" block>
-                    Eliminar
-                  </Button>
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    size="large"
+                    aria-label="Eliminar gasto"
+                  />
                 </Popconfirm>
               </div>
             </Card>

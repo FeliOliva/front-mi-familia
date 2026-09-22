@@ -28,3 +28,16 @@
     font-size: 16px !important;
   }
 }
+
+/*
+ * Mobile: altura minima tactil de 44px (WCAG / Apple HIG).
+ * AntD size="large" rinde 40px, que queda apenas por debajo.
+ */
+@media (max-width: 768px) {
+  .ant-btn-lg,
+  .ant-select-lg .ant-select-selector,
+  .ant-input-lg,
+  .ant-picker-large {
+    min-height: 44px;
+  }
+}
