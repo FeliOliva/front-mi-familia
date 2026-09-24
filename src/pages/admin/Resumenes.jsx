@@ -15,9 +15,11 @@ import {
   Empty,
   Pagination,
   Segmented,
+  Checkbox,
 } from "antd";
 import dayjs from "dayjs";
 import { api } from "../../services/api";
+import CatalogoSelect from "../../components/CatalogoSelect";
 import {
   EyeOutlined,
   EditOutlined,
@@ -1924,7 +1926,8 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
 
               // 1) Registrar CHEQUE (usa centavos si tu backend espera Decimal)
               const chequeCreado = await api("api/cheques", "POST", {
-                banco: values.banco,
+                bancoId: values.bancoId,
+                esElectronico: Boolean(values.esElectronico),
                 nroCheque: values.nroCheque,
                 fechaEmision: dayjs(values.fechaEmision).format("DD/MM/YYYY"),
                 fechaCobro: dayjs(values.fechaCobro).format("DD/MM/YYYY"),
@@ -2018,11 +2021,14 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         {esCheque && (
           <Form layout="vertical" form={chequeForm} className="mt-2">
             <Form.Item
-              name="banco"
+              name="bancoId"
               label="Banco"
-              rules={[{ required: true, message: "Ingresá el banco" }]}
+              rules={[{ required: true, message: "Elegí el banco" }]}
             >
-              <Input placeholder="Ej: Nación" />
+              <CatalogoSelect endpoint="bancos" placeholder="Elegí el banco" />
+            </Form.Item>
+            <Form.Item name="esElectronico" valuePropName="checked" style={{ marginTop: -8 }}>
+              <Checkbox>Cheque electrónico (ECHEQ)</Checkbox>
             </Form.Item>
             <Form.Item
               name="nroCheque"

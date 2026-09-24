@@ -12,6 +12,7 @@ import {
   Empty,
 } from "antd";
 import { api } from "../../services/api";
+import CatalogoSelect from "../../components/CatalogoSelect";
 import { EditOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 
 const Gastos = () => {
@@ -67,7 +68,8 @@ const Gastos = () => {
     setIsEditing(true);
     setEditingGasto(gasto);
     form.setFieldsValue({
-      motivo: (gasto.motivo || "").toUpperCase(),
+      motivoGastoId: gasto.motivoGastoId ?? undefined,
+      detalle: gasto.detalle || "",
       monto: gasto.monto,
     });
     setModalVisible(true);
@@ -99,17 +101,22 @@ const Gastos = () => {
         return;
       }
 
-      const motivoUpper = String(values.motivo || "").toUpperCase();
+      // El motivo sale del catalogo (antes era texto libre y generaba
+      // variantes como GASOIL / GASOLI / GASIOL).
+      const datosMotivo = {
+        motivoGastoId: values.motivoGastoId,
+        detalle: values.detalle?.trim() || null,
+      };
 
       if (isEditing) {
         await api(`api/gastos/${editingGasto.id}`, "PUT", {
-          motivo: motivoUpper,
+          ...datosMotivo,
           monto: montoNum,
         });
         message.success("Gasto actualizado correctamente");
       } else {
         await api("api/gastos", "POST", {
-          motivo: motivoUpper,
+          ...datosMotivo,
           monto: montoNum,
           cajaId,
         });
@@ -137,6 +144,12 @@ const Gastos = () => {
       title: "Motivo",
       dataIndex: "motivo",
       key: "motivo",
+      render: (motivo, r) => (
+        <span>
+          {motivo}
+          {r.detalle && <span style={{ color: "#888" }}> · {r.detalle}</span>}
+        </span>
+      ),
     },
     {
       title: "Usuario",
@@ -216,7 +229,12 @@ const Gastos = () => {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm text-gray-500">Motivo</p>
-                  <p className="font-medium text-gray-900">{gasto.motivo}</p>
+                  <p className="font-medium text-gray-900">
+                    {gasto.motivo}
+                    {gasto.detalle && (
+                      <span className="font-normal text-gray-500"> · {gasto.detalle}</span>
+                    )}
+                  </p>
                   <div className="mt-2 text-sm text-gray-600">
                     <span className="font-medium">Usuario:</span>{" "}
                     {gasto.usuario?.usuario || "-"}
@@ -297,11 +315,19 @@ const Gastos = () => {
       >
         <Form form={form} layout="vertical">
           <Form.Item
-            name="motivo"
+            name="motivoGastoId"
             label="Motivo"
-            rules={[{ required: true, message: "Ingresá el motivo del gasto" }]}
+            rules={[{ required: true, message: "Elegí el motivo del gasto" }]}
           >
-            <Input placeholder="Ej: Compra de materiales" />
+            <CatalogoSelect endpoint="motivosGasto" placeholder="Elegí un motivo" />
+          </Form.Item>
+
+          <Form.Item
+            name="detalle"
+            label="Detalle (opcional)"
+            extra="Lo específico de este gasto. Ej: motivo DESCARGA, detalle PAPA."
+          >
+            <Input placeholder="Ej: PAPA" maxLength={100} />
           </Form.Item>
 
           <Form.Item

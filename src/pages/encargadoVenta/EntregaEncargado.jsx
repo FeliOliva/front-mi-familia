@@ -35,6 +35,7 @@ import {
   ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import { api } from "../../services/api";
+import CatalogoSelect from "../../components/CatalogoSelect";
 import dayjs from "dayjs";
 
 const NOTIF_NUEVA_VENTA_KEY = "mf_notif_nueva_venta";
@@ -846,7 +847,8 @@ const EntregasEncargado = () => {
         const montoNum = parseMontoFlexible(paymentAmount);
 
         const chequeCreado = await api("api/cheques", "POST", {
-          banco: values.banco,
+          bancoId: values.bancoId,
+          esElectronico: Boolean(values.esElectronico),
           nroCheque: values.nroCheque,
           fechaEmision: dayjs(values.fechaEmision).format("DD/MM/YYYY"),
           fechaCobro: dayjs(values.fechaCobro).format("DD/MM/YYYY"),
@@ -1392,11 +1394,14 @@ const EntregasEncargado = () => {
               {!payLater && esCheque && (
                 <Form layout="vertical" form={chequeForm} className="mt-2">
                   <Form.Item
-                    name="banco"
+                    name="bancoId"
                     label="Banco"
-                    rules={[{ required: true, message: "Ingresá el banco" }]}
+                    rules={[{ required: true, message: "Elegí el banco" }]}
                   >
-                    <Input placeholder="Ej: Nación" />
+                    <CatalogoSelect endpoint="bancos" placeholder="Elegí el banco" />
+                  </Form.Item>
+                  <Form.Item name="esElectronico" valuePropName="checked" style={{ marginTop: -8 }}>
+                    <Checkbox>Cheque electrónico (ECHEQ)</Checkbox>
                   </Form.Item>
                   <Form.Item
                     name="nroCheque"

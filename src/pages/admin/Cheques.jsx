@@ -14,9 +14,11 @@ import {
   Empty,
   DatePicker,
   Tag,
+  Checkbox,
 } from "antd";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../services/api";
+import CatalogoSelect from "../../components/CatalogoSelect";
 import { EditOutlined, DeleteOutlined, CheckCircleOutlined, LinkOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 
@@ -119,7 +121,8 @@ const Cheques = () => {
   const handleEdit = (cheque) => {
     setEditingCheque(cheque);
     form.setFieldsValue({
-      banco: cheque.banco || "",
+      bancoId: cheque.bancoId ?? undefined,
+      esElectronico: Boolean(cheque.esElectronico),
       nroCheque: cheque.nroCheque || "",
       fechaEmision: cheque.fechaEmision ? dayjs(cheque.fechaEmision) : null,
       fechaCobro: cheque.fechaCobro ? dayjs(cheque.fechaCobro) : null,
@@ -135,7 +138,8 @@ const Cheques = () => {
       const values = await form.validateFields();
       setSaving(true);
       await api(`api/cheques/${editingCheque.id}`, "PUT", {
-        banco: String(values.banco || "").trim(),
+        bancoId: values.bancoId,
+        esElectronico: Boolean(values.esElectronico),
         nroCheque: String(values.nroCheque || "").trim(),
         fechaEmision: dayjs(values.fechaEmision).format("DD/MM/YYYY"),
         fechaCobro: dayjs(values.fechaCobro).format("DD/MM/YYYY"),
@@ -192,8 +196,14 @@ const Cheques = () => {
       title: "Banco",
       dataIndex: "banco",
       key: "banco",
-      width: 120,
+      width: 140,
       ellipsis: true,
+      render: (banco, r) => (
+        <span>
+          {r.bancoId ? banco : <span style={{ color: "#999" }}>Sin banco</span>}
+          {r.esElectronico && <Tag color="blue" style={{ marginLeft: 6 }}>ECHEQ</Tag>}
+        </span>
+      ),
     },
     {
       title: "F. Emisión",
@@ -350,7 +360,10 @@ const Cheques = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Banco / Negocio</p>
-                  <p className="text-gray-900">{c.banco} – {c.negocio?.nombre ?? "-"}</p>
+                  <p className="text-gray-900">
+                    {c.bancoId ? c.banco : <span className="text-gray-400">Sin banco</span>} – {c.negocio?.nombre ?? "-"}
+                    {c.esElectronico && <Tag color="blue" style={{ marginLeft: 6 }}>ECHEQ</Tag>}
+                  </p>
                 </div>
                 <div className="flex gap-4 text-sm">
                   <span>Emisión: {formatDate(c.fechaEmision)}</span>
@@ -447,11 +460,14 @@ const Cheques = () => {
       >
         <Form form={form} layout="vertical">
           <Form.Item
-            name="banco"
+            name="bancoId"
             label="Banco"
-            rules={[{ required: true, message: "Ingresá el banco" }]}
+            rules={[{ required: true, message: "Elegí el banco" }]}
           >
-            <Input placeholder="Ej: Nación" />
+            <CatalogoSelect endpoint="bancos" placeholder="Elegí el banco" />
+          </Form.Item>
+          <Form.Item name="esElectronico" valuePropName="checked" style={{ marginTop: -8 }}>
+            <Checkbox>Cheque electrónico (ECHEQ)</Checkbox>
           </Form.Item>
           <Form.Item
             name="nroCheque"
