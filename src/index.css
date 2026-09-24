@@ -41,3 +41,21 @@
     min-height: 44px;
   }
 }
+
+/*
+ * Evitar que la pagina se corra de costado al arrastrar horizontalmente.
+ *
+ * Con overscroll-behavior-x en "auto" (el default), el navegador aplica su
+ * rebote elastico horizontal aunque no haya nada que scrollear: al deslizar
+ * para volver atras o al arrastrar sobre una card, toda la pagina se despega
+ * del borde. "contain" mantiene el gesto dentro del documento sin desactivar
+ * el scroll vertical ni el zoom manual.
+ *
+ * overflow-x: hidden ademas evita que un elemento que se pase de ancho
+ * habilite scroll horizontal real en toda la pagina.
+ */
+html,
+body {
+  overscroll-behavior-x: contain;
+  overflow-x: hidden;
+}

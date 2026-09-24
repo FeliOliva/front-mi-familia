@@ -1841,6 +1841,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
           <div>
             <label>Monto</label>
             <Input
+              inputMode="decimal"
               value={nuevoMonto ?? ""}
               onChange={(e) => {
                 const value = e.target.value;

@@ -63,19 +63,33 @@ const Repartidor = () => {
   }, []);
 
   // Funciones para manejar el swipe
+  // Se guarda tambien la coordenada Y: midiendo solo X, un scroll vertical
+  // hecho en diagonal contaba como swipe y cambiaba de pestaña solo.
   const onTouchStart = (e) => {
     setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
+    setTouchStart({
+      x: e.targetTouches[0].clientX,
+      y: e.targetTouches[0].clientY,
+    });
   };
 
   const onTouchMove = (e) => {
-    setTouchEnd(e.targetTouches[0].clientX);
+    setTouchEnd({
+      x: e.targetTouches[0].clientX,
+      y: e.targetTouches[0].clientY,
+    });
   };
 
   const onTouchEnd = () => {
     if (!touchStart || !touchEnd) return;
-    
-    const distance = touchStart - touchEnd;
+
+    const distance = touchStart.x - touchEnd.x;
+    const distanciaVertical = Math.abs(touchStart.y - touchEnd.y);
+
+    // Solo es swipe si el movimiento es claramente horizontal; si no, era
+    // un scroll y no hay que cambiar de pestaña.
+    if (distanciaVertical > Math.abs(distance)) return;
+
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
 
@@ -222,10 +236,11 @@ const Repartidor = () => {
         onTouchStart={isMobile ? onTouchStart : undefined}
         onTouchMove={isMobile ? onTouchMove : undefined}
         onTouchEnd={isMobile ? onTouchEnd : undefined}
-        style={{ 
-          touchAction: isMobile ? 'pan-y' : 'auto',
-          userSelect: 'none',
-          WebkitUserSelect: 'none'
+        style={{
+          // pan-y: el navegador maneja el scroll vertical y no aplica su
+          // rebote horizontal sobre esta zona.
+          touchAction: isMobile ? "pan-y" : "auto",
+          overscrollBehaviorX: "contain",
         }}
       >
         {activeTab === "entregas" ? (
