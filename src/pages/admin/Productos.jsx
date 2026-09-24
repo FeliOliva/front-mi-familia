@@ -17,6 +17,7 @@ import {
   Pagination,
 } from "antd";
 import { api } from "../../services/api";
+import ModalFooter, { kbdStyle } from "../../components/ModalFooter";
 import {
   EditOutlined,
   StopOutlined,
@@ -532,22 +533,30 @@ const Productos = () => {
           setEditingProduct(null);
           form.resetFields();
         }}
-        footer={[
-          <span key="hint" style={{ float: "left", color: "#888", fontSize: 12, lineHeight: "32px" }}>
-            💡 <kbd style={{ background: "#f0f0f0", padding: "2px 6px", borderRadius: 4, border: "1px solid #d9d9d9" }}>F2</kbd> o <kbd style={{ background: "#f0f0f0", padding: "2px 6px", borderRadius: 4, border: "1px solid #d9d9d9" }}>Enter</kbd> para guardar
-          </span>,
-          <Button key="cancelar" onClick={() => {
-            setModalVisible(false);
-            setIsEditing(false);
-            setEditingProduct(null);
-            form.resetFields();
-          }}>
-            Cancelar
-          </Button>,
-          <Button key="guardar" type="primary" onClick={() => form.submit()}>
-            Guardar
-          </Button>,
-        ]}
+        footer={
+          <ModalFooter
+            hint={
+              <>
+                <kbd style={kbdStyle}>F2</kbd> o <kbd style={kbdStyle}>Enter</kbd> para guardar
+              </>
+            }
+          >
+            <Button
+              key="cancelar"
+              onClick={() => {
+                setModalVisible(false);
+                setIsEditing(false);
+                setEditingProduct(null);
+                form.resetFields();
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button key="guardar" type="primary" onClick={() => form.submit()}>
+              Guardar
+            </Button>
+          </ModalFooter>
+        }
       >
         <Form layout="vertical" form={form} onFinish={onFinish}>
           <Form.Item

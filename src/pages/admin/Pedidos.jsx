@@ -22,6 +22,7 @@ import {
   Spin,
   Pagination,
 } from "antd";
+import ModalFooter from "../../components/ModalFooter";
 import { api } from "../../services/api";
 import {
   DeleteOutlined,
@@ -845,21 +846,23 @@ const Pedidos = () => {
           setPedidoEditando(null);
           setProductosSeleccionados([]);
         }}
-        footer={[
-          <Button key="cancelar" onClick={() => setModalVisible(false)}>
-            Cancelar
-          </Button>,
-          <Button
-            key="guardar"
-            type="primary"
-            onClick={guardarPedido}
-            loading={isSaving}
-            icon={<CheckCircleOutlined />}
-            style={{ backgroundColor: "#722ed1", borderColor: "#722ed1" }}
-          >
-            {pedidoEditando ? "Actualizar" : "Guardar Pedido"}
-          </Button>,
-        ]}
+        footer={
+          <ModalFooter>
+            <Button key="cancelar" onClick={() => setModalVisible(false)}>
+              Cancelar
+            </Button>
+            <Button
+              key="guardar"
+              type="primary"
+              onClick={guardarPedido}
+              loading={isSaving}
+              icon={<CheckCircleOutlined />}
+              style={{ backgroundColor: "#722ed1", borderColor: "#722ed1" }}
+            >
+              {pedidoEditando ? "Actualizar" : "Guardar Pedido"}
+            </Button>
+          </ModalFooter>
+        }
         width={isMobile ? "95%" : "800px"}
         style={{ maxWidth: "800px", top: isMobile ? 8 : 100 }}
         styles={{
@@ -1098,14 +1101,16 @@ const Pedidos = () => {
         title="Detalle del Pedido"
         open={detalleModalVisible}
         onCancel={() => setDetalleModalVisible(false)}
-        footer={[
-          <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => detallePedido && generarPDF(detallePedido)}>
-            Generar PDF
-          </Button>,
-          <Button key="cerrar" type="primary" onClick={() => setDetalleModalVisible(false)}>
-            Cerrar
-          </Button>,
-        ]}
+        footer={
+          <ModalFooter>
+            <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => detallePedido && generarPDF(detallePedido)}>
+              Generar PDF
+            </Button>
+            <Button key="cerrar" type="primary" onClick={() => setDetalleModalVisible(false)}>
+              Cerrar
+            </Button>
+          </ModalFooter>
+        }
         width={isMobile ? "95%" : 600}
       >
 {detallePedido && (

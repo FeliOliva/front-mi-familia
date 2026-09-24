@@ -14,6 +14,7 @@ import {
   Card,
   Empty,
   Pagination,
+  Segmented,
 } from "antd";
 import dayjs from "dayjs";
 import { api } from "../../services/api";
@@ -26,6 +27,7 @@ import {
   CreditCardOutlined,
   MenuOutlined,
   DollarOutlined,
+  SearchOutlined,
 } from "@ant-design/icons";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -223,6 +225,9 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
   const [fechaInicio, setFechaInicio] = useState(dayjs("2025-12-01"));
   const [fechaFin, setFechaFin] = useState(dayjs());
   const [transacciones, setTransacciones] = useState([]);
+  // Buscador de movimientos (ventas, pagos, notas de credito)
+  const [busquedaMov, setBusquedaMov] = useState("");
+  const [filtroTipoMov, setFiltroTipoMov] = useState("todos");
   const [hasBuscado, setHasBuscado] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [detalleSeleccionado, setDetalleSeleccionado] = useState(null);
@@ -1043,6 +1048,33 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     }
   };
 
+  // Movimientos filtrados para mostrar. El saldo_restante ya viene calculado
+  // sobre la lista completa, asi que cada fila conserva su saldo real.
+  const normalizarBusqueda = (v) =>
+    String(v ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+  const transaccionesFiltradas = transacciones.filter((t) => {
+    if (filtroTipoMov !== "todos" && t.tipo !== filtroTipoMov) return false;
+    const q = normalizarBusqueda(busquedaMov).trim();
+    if (!q) return true;
+    const qNum = q.replace(/[^\d]/g, "");
+    const monto = String(Math.round(t.__montoOriginal ?? t.monto ?? 0));
+    const campos = [
+      t.tipo,
+      t.numero,
+      t.metodo_pago,
+      t.motivo,
+      t.observacion,
+      dayjs(t.fecha).format("DD/MM/YYYY"),
+    ].map(normalizarBusqueda);
+    return (
+      campos.some((c) => c.includes(q)) ||
+      (qNum.length > 0 && monto.includes(qNum))
+    );
+  });
+
   const handleImprimirResumen = async () => {
     if (!negocioSeleccionado) {
       message.warning("Seleccioná un negocio primero");
@@ -1469,16 +1501,56 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
       <div className="bg-white rounded-lg shadow-md mb-6">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Movimientos</h2>
+          {transacciones.length > 0 && (
+            <div className="flex flex-col gap-2 mt-3 sm:flex-row sm:items-center">
+              <Segmented
+                value={filtroTipoMov}
+                onChange={(v) => {
+                  setFiltroTipoMov(v);
+                  setPageMovimientosMobile(1);
+                }}
+                options={[
+                  { label: "Todos", value: "todos" },
+                  { label: "Ventas", value: "Venta" },
+                  { label: "Pagos", value: "Entrega" },
+                  { label: "N/C", value: "Nota de Crédito" },
+                ]}
+                block={isMobile}
+              />
+              <Input
+                allowClear
+                prefix={<SearchOutlined style={{ color: "#1890ff" }} />}
+                placeholder="Buscar por número, monto, fecha o método"
+                value={busquedaMov}
+                onChange={(e) => {
+                  setBusquedaMov(e.target.value);
+                  setPageMovimientosMobile(1);
+                }}
+                className="sm:max-w-xs"
+              />
+              {(busquedaMov || filtroTipoMov !== "todos") && (
+                <span className="text-xs text-gray-500">
+                  {transaccionesFiltradas.length} de {transacciones.length}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         {/* En mobile las 4 columnas seguian dando 540px contra 263px utiles
             y se cortaban Total y Acciones. Cards, igual que Cheques. */}
         {isMobile ? (
           <div className="px-3 py-4 space-y-3">
-            {transacciones.length === 0 ? (
-              <Empty description="No hay datos disponibles" />
+            {transaccionesFiltradas.length === 0 ? (
+              <Empty
+                description={
+                  transacciones.length === 0
+                    ? "No hay datos disponibles"
+                    : "Ningún movimiento coincide con la búsqueda"
+                }
+              />
             ) : (
               <>
-                {transacciones
+                {transaccionesFiltradas
                   .slice(
                     (pageMovimientosMobile - 1) * 5,
                     pageMovimientosMobile * 5,
@@ -1496,7 +1568,15 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                       >
                         <div className="flex justify-between items-start mb-2">
                           <div>
-                            <p className="font-semibold">{t.tipo}</p>
+                            <p className="font-semibold">
+                              {t.tipo}
+                              {t.numero && (
+                                <span className="font-normal text-gray-500">
+                                  {" "}
+                                  · {t.numero}
+                                </span>
+                              )}
+                            </p>
                             <p className="text-xs text-gray-500">
                               {dayjs(t.fecha).format("DD/MM/YYYY")}
                             </p>
@@ -1555,7 +1635,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 <Pagination
                   current={pageMovimientosMobile}
                   pageSize={5}
-                  total={transacciones.length}
+                  total={transaccionesFiltradas.length}
                   onChange={setPageMovimientosMobile}
                   size="small"
                   simple
@@ -1567,7 +1647,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         ) : (
         <div className="overflow-x-auto px-4 py-4">
           <Table
-            dataSource={transacciones}
+            dataSource={transaccionesFiltradas}
             columns={getColumns()}
             rowKey={(record) => `${record.tipo}-${record.id}`}
             pagination={{

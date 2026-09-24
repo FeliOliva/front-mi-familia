@@ -12,6 +12,7 @@ import {
   Tag,
   message,
 } from "antd";
+import ModalFooter from "../../components/ModalFooter";
 import { FilePdfOutlined } from "@ant-design/icons";
 import { api } from "../../services/api";
 import jsPDF from "jspdf";
@@ -244,26 +245,28 @@ const ListaProductosModal = ({ open, onClose }) => {
       onCancel={onClose}
       width={820}
       styles={{ body: { maxHeight: "72vh", overflowY: "auto", overscrollBehavior: "contain" } }}
-      footer={[
-        <span
-          key="count"
-          style={{ float: "left", color: "#888", lineHeight: "32px" }}
+      footer={
+        <ModalFooter
+          info={
+            <>
+              {productosResultado.length} producto
+              {productosResultado.length === 1 ? "" : "s"} en la lista
+            </>
+          }
         >
-          {productosResultado.length} producto
-          {productosResultado.length === 1 ? "" : "s"} en la lista
-        </span>,
-        <Button key="cerrar" onClick={onClose}>
-          Cerrar
-        </Button>,
-        <Button
-          key="pdf"
-          type="primary"
-          icon={<FilePdfOutlined />}
-          onClick={generarPDF}
-        >
-          Descargar PDF
-        </Button>,
-      ]}
+          <Button key="cerrar" onClick={onClose}>
+            Cerrar
+          </Button>
+          <Button
+            key="pdf"
+            type="primary"
+            icon={<FilePdfOutlined />}
+            onClick={generarPDF}
+          >
+            Descargar PDF
+          </Button>
+        </ModalFooter>
+      }
     >
       <div className="space-y-4">
         <div>

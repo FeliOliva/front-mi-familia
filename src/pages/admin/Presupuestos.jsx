@@ -24,6 +24,7 @@ import {
   Pagination,
 } from "antd";
 import { api } from "../../services/api";
+import ModalFooter from "../../components/ModalFooter";
 import {
   DeleteOutlined,
   ShoppingCartOutlined,
@@ -1373,31 +1374,29 @@ const Presupuestos = () => {
           width="800px"
           style={{ maxWidth: "800px", top: 60 }}
           styles={{ body: { padding: 12, maxHeight: "70vh", overflowY: "auto", overscrollBehavior: "contain" } }}
-          footer={[
-            <span
-              key="hint"
-              style={{
-                float: "left",
-                color: "#888",
-                fontSize: 12,
-                lineHeight: "32px",
-              }}
+          footer={
+            <ModalFooter
+              hint={
+                <>
+                  <kbd style={kbdStyle}>F2</kbd> guardar · <kbd style={kbdStyle}>F4</kbd> nuevo ·{" "}
+                  <kbd style={kbdStyle}>↑↓</kbd>/<kbd style={kbdStyle}>Enter</kbd> productos
+                </>
+              }
             >
-              💡 <kbd style={kbdStyle}>F2</kbd> guardar · <kbd style={kbdStyle}>F4</kbd> nuevo · <kbd style={kbdStyle}>↑↓</kbd>/<kbd style={kbdStyle}>Enter</kbd> productos
-            </span>,
-            <Button key="cancelar" onClick={cerrarModal} disabled={isSaving}>
-              Cancelar
-            </Button>,
-            <Button
-              key="guardar"
-              type="primary"
-              onClick={guardarPresupuesto}
-              loading={isSaving}
-              icon={<ShoppingCartOutlined />}
-            >
-              {presupuestoEditando ? "Actualizar" : "Guardar"}
-            </Button>,
-          ]}
+              <Button key="cancelar" onClick={cerrarModal} disabled={isSaving}>
+                Cancelar
+              </Button>
+              <Button
+                key="guardar"
+                type="primary"
+                onClick={guardarPresupuesto}
+                loading={isSaving}
+                icon={<ShoppingCartOutlined />}
+              >
+                {presupuestoEditando ? "Actualizar" : "Guardar"}
+              </Button>
+            </ModalFooter>
+          }
         >
           {contenidoModal}
         </Modal>
@@ -1408,18 +1407,20 @@ const Presupuestos = () => {
         title={`Detalle ${detallePresupuesto?.nroPresupuesto || ""}`}
         open={detalleModalVisible}
         onCancel={() => setDetalleModalVisible(false)}
-        footer={[
-          <Button
-            key="pdf"
-            icon={<FilePdfOutlined />}
-            onClick={() => detallePresupuesto && generarPDF(detallePresupuesto)}
-          >
-            Descargar PDF
-          </Button>,
-          <Button key="cerrar" onClick={() => setDetalleModalVisible(false)}>
-            Cerrar
-          </Button>,
-        ]}
+        footer={
+          <ModalFooter>
+            <Button
+              key="pdf"
+              icon={<FilePdfOutlined />}
+              onClick={() => detallePresupuesto && generarPDF(detallePresupuesto)}
+            >
+              Descargar PDF
+            </Button>
+            <Button key="cerrar" onClick={() => setDetalleModalVisible(false)}>
+              Cerrar
+            </Button>
+          </ModalFooter>
+        }
         width={isMobile ? "95%" : 600}
       >
         {detallePresupuesto && (

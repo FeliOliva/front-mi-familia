@@ -17,6 +17,7 @@ import {
 } from "antd";
 import { useParams } from "react-router-dom";
 import { api } from "../../services/api";
+import ModalFooter, { kbdStyle } from "../../components/ModalFooter";
 import {
   EditOutlined,
   StopOutlined,
@@ -495,22 +496,24 @@ const Negocios = () => {
           setEditingNegocio(null);
           form.resetFields();
         }}
-        footer={[
-          <span key="f2-hint" style={{ float: "left", color: "#888", fontSize: "0.85em" }}>
-            💡 Presioná F2 para guardar rápido
-          </span>,
-          <Button key="cancelar" onClick={() => {
-            setModalVisible(false);
-            setIsEditing(false);
-            setEditingNegocio(null);
-            form.resetFields();
-          }}>
-            Cancelar
-          </Button>,
-          <Button key="guardar" type="primary" onClick={() => form.submit()}>
-            Guardar
-          </Button>,
-        ]}
+        footer={
+          <ModalFooter hint={<><kbd style={kbdStyle}>F2</kbd> para guardar rápido</>}>
+            <Button
+              key="cancelar"
+              onClick={() => {
+                setModalVisible(false);
+                setIsEditing(false);
+                setEditingNegocio(null);
+                form.resetFields();
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button key="guardar" type="primary" onClick={() => form.submit()}>
+              Guardar
+            </Button>
+          </ModalFooter>
+        }
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
           <Form.Item

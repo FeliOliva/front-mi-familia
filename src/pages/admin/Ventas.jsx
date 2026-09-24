@@ -28,6 +28,7 @@ import {
   Pagination,
 } from "antd";
 import { api } from "../../services/api";
+import ModalFooter, { kbdStyle } from "../../components/ModalFooter";
 import {
   DeleteOutlined,
   ShoppingCartOutlined,
@@ -2248,53 +2249,29 @@ const Ventas = () => {
         }
         open={modalVisible}
         onCancel={handleCerrarModal}
-        footer={[
-          <span
-            key="hint"
-            style={{
-              float: "left",
-              color: "#888",
-              fontSize: 12,
-              lineHeight: "32px",
-            }}
+        footer={
+          <ModalFooter
+            hint={
+              <>
+                <kbd style={kbdStyle}>F2</kbd> para finalizar rápido ·{" "}
+                <kbd style={kbdStyle}>F4</kbd> nueva venta
+              </>
+            }
           >
-            💡{" "}
-            <kbd
-              style={{
-                background: "#f0f0f0",
-                padding: "2px 6px",
-                borderRadius: 4,
-                border: "1px solid #d9d9d9",
-              }}
+            <Button key="cancelar" onClick={handleCerrarModal}>
+              Cancelar
+            </Button>
+            <Button
+              key="guardar"
+              type="primary"
+              onClick={guardarVenta}
+              loading={isSaving}
+              icon={<ShoppingCartOutlined />}
             >
-              F2
-            </kbd>{" "}
-            para finalizar rápido ·{" "}
-            <kbd
-              style={{
-                background: "#f0f0f0",
-                padding: "2px 6px",
-                borderRadius: 4,
-                border: "1px solid #d9d9d9",
-              }}
-            >
-              F4
-            </kbd>{" "}
-            nueva venta
-          </span>,
-          <Button key="cancelar" onClick={handleCerrarModal}>
-            Cancelar
-          </Button>,
-          <Button
-            key="guardar"
-            type="primary"
-            onClick={guardarVenta}
-            loading={isSaving}
-            icon={<ShoppingCartOutlined />}
-          >
-            {ventaEditando ? "Actualizar" : "Finalizar"}
-          </Button>,
-        ]}
+              {ventaEditando ? "Actualizar" : "Finalizar"}
+            </Button>
+          </ModalFooter>
+        }
         width={isMobile ? "95%" : "800px"}
         style={{ maxWidth: "800px", top: isMobile ? 8 : 100 }}
         styles={{
@@ -2787,19 +2764,21 @@ const Ventas = () => {
         title="Cierre de Caja"
         open={modalCierreVisible}
         onCancel={() => setModalCierreVisible(false)}
-        footer={[
-          <Button key="cancel" onClick={() => setModalCierreVisible(false)}>
-            Cancelar
-          </Button>,
-          <Button
-            key="cerrar"
-            type="primary"
-            loading={cierreLoading}
-            onClick={handleCerrarCaja}
-          >
-            Confirmar Cierre
-          </Button>,
-        ]}
+        footer={
+          <ModalFooter>
+            <Button key="cancel" onClick={() => setModalCierreVisible(false)}>
+              Cancelar
+            </Button>
+            <Button
+              key="cerrar"
+              type="primary"
+              loading={cierreLoading}
+              onClick={handleCerrarCaja}
+            >
+              Confirmar Cierre
+            </Button>
+          </ModalFooter>
+        }
         width={isMobile ? "95%" : 600}
         styles={{ body: { maxHeight: "70vh", overflowY: "auto", overscrollBehavior: "contain" } }}
       >

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../../services/api";
 import { PrinterOutlined } from "@ant-design/icons";
 import { Tooltip, Modal, Button, Input, Pagination } from "antd";
+import ModalFooter from "../../components/ModalFooter";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -1100,14 +1101,16 @@ const CierreCajaGeneral = () => {
             ? `Editar contado - ${cierreEditando.caja?.nombre || "Caja"}`
             : "Editar contado"
         }
-        footer={[
-          <Button key="cancel" onClick={cerrarModalEditar}>
-            Cancelar
-          </Button>,
-          <Button key="save" type="primary" onClick={guardarMontoEditado}>
-            Guardar
-          </Button>,
-        ]}
+        footer={
+          <ModalFooter>
+            <Button key="cancel" onClick={cerrarModalEditar}>
+              Cancelar
+            </Button>
+            <Button key="save" type="primary" onClick={guardarMontoEditado}>
+              Guardar
+            </Button>
+          </ModalFooter>
+        }
       >
         <p className="mb-2 text-sm text-gray-600">
           Ingresá el monto contado físicamente para esta caja.
@@ -1125,11 +1128,13 @@ const CierreCajaGeneral = () => {
       <Modal
         open={detalleModalVisible}
         onCancel={() => setDetalleModalVisible(false)}
-        footer={[
-          <Button key="close" onClick={() => setDetalleModalVisible(false)}>
-            Cerrar
-          </Button>,
-        ]}
+        footer={
+          <ModalFooter>
+            <Button key="close" onClick={() => setDetalleModalVisible(false)}>
+              Cerrar
+            </Button>
+          </ModalFooter>
+        }
         title={
           cierreSeleccionado
             ? `Métodos de pago - ${

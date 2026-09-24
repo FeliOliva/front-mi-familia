@@ -19,6 +19,7 @@ import {
   message,
   Tooltip,
 } from "antd";
+import ModalFooter from "../../components/ModalFooter";
 import {
   ShoppingCartOutlined,
   CreditCardOutlined,
@@ -1103,29 +1104,33 @@ const EntregasEncargado = () => {
         }
         open={detailsModalVisible}
         onCancel={handleCloseDetailsModal}
-        footer={[
-          <Button key="back" onClick={handleCloseDetailsModal}>
-            Cerrar
-          </Button>,
-          selectedEntrega &&
-            (selectedEntrega.estado === 1 ||
-              selectedEntrega.estado === 3 ||
-              selectedEntrega.estado === 5) && (
-              <Button
-                key="cobrar"
-                type="primary"
-                onClick={() => {
-                  handleCloseDetailsModal();
-                  handleOpenPaymentModal(selectedEntrega);
-                }}
-                disabled={selectedEntrega.usuarioId !== userId}
-              >
-                {selectedEntrega.estado === 5
-                  ? "Completar Pago"
-                  : "Cobrar Entrega"}
-              </Button>
-            ),
-        ]}
+        footer={
+          <ModalFooter>
+            <Button key="back" onClick={handleCloseDetailsModal}>
+              Cerrar
+            </Button>
+            {
+              selectedEntrega &&
+                (selectedEntrega.estado === 1 ||
+                  selectedEntrega.estado === 3 ||
+                  selectedEntrega.estado === 5) && (
+                  <Button
+                    key="cobrar"
+                    type="primary"
+                    onClick={() => {
+                      handleCloseDetailsModal();
+                      handleOpenPaymentModal(selectedEntrega);
+                    }}
+                    disabled={selectedEntrega.usuarioId !== userId}
+                  >
+                    {selectedEntrega.estado === 5
+                      ? "Completar Pago"
+                      : "Cobrar Entrega"}
+                  </Button>
+                )
+            }
+          </ModalFooter>
+        }
         width={600}
       >
         {selectedEntrega && (
@@ -1279,19 +1284,21 @@ const EntregasEncargado = () => {
         }
         open={paymentModalVisible}
         onCancel={handleClosePaymentModal}
-        footer={[
-          <Button key="back" onClick={handleClosePaymentModal}>
-            Cancelar
-          </Button>,
-          <Button
-            key="submit"
-            type="primary"
-            loading={processingPayment}
-            onClick={handleSubmitPayment}
-          >
-            {payLater ? "Guardar" : "Cobrar"}
-          </Button>,
-        ]}
+        footer={
+          <ModalFooter>
+            <Button key="back" onClick={handleClosePaymentModal}>
+              Cancelar
+            </Button>
+            <Button
+              key="submit"
+              type="primary"
+              loading={processingPayment}
+              onClick={handleSubmitPayment}
+            >
+              {payLater ? "Guardar" : "Cobrar"}
+            </Button>
+          </ModalFooter>
+        }
       >
         <Form layout="vertical" className="mt-2">
           {paymentError && (
@@ -1475,19 +1482,21 @@ const EntregasEncargado = () => {
         title="Cierre de Caja"
         open={modalCierreVisible}
         onCancel={() => setModalCierreVisible(false)}
-        footer={[
-          <Button key="cancel" onClick={() => setModalCierreVisible(false)}>
-            Cancelar
-          </Button>,
-          <Button
-            key="cerrar"
-            type="primary"
-            loading={cierreLoading}
-            onClick={handleCerrarCaja}
-          >
-            Confirmar Cierre
-          </Button>,
-        ]}
+        footer={
+          <ModalFooter>
+            <Button key="cancel" onClick={() => setModalCierreVisible(false)}>
+              Cancelar
+            </Button>
+            <Button
+              key="cerrar"
+              type="primary"
+              loading={cierreLoading}
+              onClick={handleCerrarCaja}
+            >
+              Confirmar Cierre
+            </Button>
+          </ModalFooter>
+        }
       >
         {cajaInfo ? (
           <div>
