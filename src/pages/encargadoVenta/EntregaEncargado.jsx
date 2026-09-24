@@ -845,14 +845,13 @@ const EntregasEncargado = () => {
         const values = await chequeForm.validateFields();
         const montoNum = parseMontoFlexible(paymentAmount);
 
-        await api("api/cheques", "POST", {
+        const chequeCreado = await api("api/cheques", "POST", {
           banco: values.banco,
           nroCheque: values.nroCheque,
           fechaEmision: dayjs(values.fechaEmision).format("DD/MM/YYYY"),
           fechaCobro: dayjs(values.fechaCobro).format("DD/MM/YYYY"),
           monto: montoNum,
           negocioId,
-          ventaId,
         });
 
         const response = await api("api/entregas", "POST", {
@@ -862,6 +861,7 @@ const EntregasEncargado = () => {
           negocioId,
           ventaId,
           pagoOtroDia: false,
+          chequeId: chequeCreado?.id,
         });
         console.log("Respuesta de addEntrega", response);
         message.success("Cheque y pago registrados");

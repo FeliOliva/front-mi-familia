@@ -15,11 +15,15 @@ import {
   DatePicker,
   Tag,
 } from "antd";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../services/api";
-import { EditOutlined, DeleteOutlined, CheckCircleOutlined } from "@ant-design/icons";
+import { EditOutlined, DeleteOutlined, CheckCircleOutlined, LinkOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 
 const Cheques = () => {
+  const navigate = useNavigate();
+  // ?buscar=<nroCheque>: se llega asi desde el boton "Ver cheque" de Resumenes
+  const [searchParams] = useSearchParams();
   const [cheques, setCheques] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -27,7 +31,7 @@ const Cheques = () => {
   const [total, setTotal] = useState(0);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [negocios, setNegocios] = useState([]);
-  const [filtroNumero, setFiltroNumero] = useState("");
+  const [filtroNumero, setFiltroNumero] = useState(searchParams.get("buscar") || "");
   const [filtroCliente, setFiltroCliente] = useState("");
   const [filtroBanco, setFiltroBanco] = useState("");
 
@@ -170,6 +174,12 @@ const Cheques = () => {
     }
   };
 
+  // Lleva al resumen de cuenta del negocio, con el pago de este cheque ya buscado.
+  const verPago = (c) =>
+    navigate(
+      `/resumenes?negocioId=${c.negocioId}&buscar=${encodeURIComponent(c.entrega.nroEntrega)}`,
+    );
+
   const columns = [
     {
       title: "Nº Cheque",
@@ -213,6 +223,19 @@ const Cheques = () => {
       width: 160,
       ellipsis: true,
       render: (_, r) => r.negocio?.nombre ?? "-",
+    },
+    {
+      title: "Pago",
+      key: "pago",
+      width: 110,
+      render: (_, r) =>
+        r.entrega ? (
+          <Button type="link" size="small" icon={<LinkOutlined />} onClick={() => verPago(r)}>
+            {r.entrega.nroEntrega}
+          </Button>
+        ) : (
+          <span style={{ color: "#999" }}>Sin vincular</span>
+        ),
     },
     {
       title: "Estado",
@@ -333,9 +356,22 @@ const Cheques = () => {
                   <span>Emisión: {formatDate(c.fechaEmision)}</span>
                   <span>Cobro: {formatDate(c.fechaCobro)}</span>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Monto</p>
-                  <p className="text-lg font-semibold">{formatCurrency(c.monto)}</p>
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-sm text-gray-500">Monto</p>
+                    <p className="text-lg font-semibold">{formatCurrency(c.monto)}</p>
+                  </div>
+                  {c.entrega ? (
+                    <Button
+                      size="large"
+                      icon={<LinkOutlined />}
+                      onClick={() => verPago(c)}
+                    >
+                      Pago {c.entrega.nroEntrega}
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-gray-400">Sin pago vinculado</span>
+                  )}
                 </div>
                 <div className="flex gap-2 mt-2">
                   {c.estado === 1 ? (

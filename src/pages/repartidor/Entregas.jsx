@@ -797,17 +797,16 @@ const Entregas = ({ onOpenResumen }) => {
         const montoCheque = parseFloat(paymentAmount);
 
         // Guardar cheque
-        await api("api/cheques", "POST", {
+        const chequeCreado = await api("api/cheques", "POST", {
           banco: values.banco,
           nroCheque: values.nroCheque,
           fechaEmision: values.fechaEmision.format("DD/MM/YYYY"),
           fechaCobro: values.fechaCobro.format("DD/MM/YYYY"),
           monto: montoCheque,
           negocioId: selectedEntrega.negocio?.id,
-          ventaId: selectedEntrega.id,
         });
 
-        // Registrar entrega asociada al cheque
+        // Registrar entrega asociada al cheque (chequeId los vincula)
         await api("api/entregas", "POST", {
           monto: montoCheque,
           metodoPagoId: metodoPagos.find((m) => m.nombre === "CHEQUE")?.id,
@@ -815,6 +814,7 @@ const Entregas = ({ onOpenResumen }) => {
           negocioId: selectedEntrega.negocio?.id,
           ventaId: selectedEntrega.id,
           pagoOtroDia: false,
+          chequeId: chequeCreado?.id,
         });
 
         message.success("Cheque y entrega registrados correctamente");

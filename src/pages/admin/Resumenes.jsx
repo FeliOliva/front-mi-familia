@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Select,
   DatePicker,
@@ -28,6 +28,7 @@ import {
   MenuOutlined,
   DollarOutlined,
   SearchOutlined,
+  LinkOutlined,
 } from "@ant-design/icons";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -214,6 +215,7 @@ const prepararTransacciones = (raw) => {
 
 const VentasPorNegocio = ({ preselectNegocioId }) => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const selectNegocioRef = useRef(null);
   // Obtener rol del usuario (1 = encargado de ventas)
   const userRole = Number(localStorage.getItem("rol"));
@@ -302,6 +304,11 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     const negocioIdParam = searchParams.get("negocioId");
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
+    const buscarParam = searchParams.get("buscar");
+    if (buscarParam) {
+      setBusquedaMov(buscarParam);
+      setFiltroTipoMov("todos");
+    }
     if (negocioIdParam) {
       const negocioIdNum = Number(negocioIdParam);
       if (Number.isFinite(negocioIdNum)) {
@@ -930,6 +937,14 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 onClick={() => handleEliminar(record.id, record.tipo, record)}
                 size="small"
               />
+              {record.cheque && puedeVerCheques && (
+                <Button
+                  icon={<LinkOutlined />}
+                  onClick={() => verCheque(record)}
+                  size="small"
+                  title={`Ver cheque ${record.cheque.nroCheque}`}
+                />
+              )}
             </div>
           ),
         },
@@ -982,6 +997,14 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 onClick={() => handleEliminar(record.id, record.tipo, record)}
                 size="small"
               />
+              {record.cheque && puedeVerCheques && (
+                <Button
+                  icon={<LinkOutlined />}
+                  onClick={() => verCheque(record)}
+                  size="small"
+                  title={`Ver cheque ${record.cheque.nroCheque}`}
+                />
+              )}
             </div>
           ),
         },
@@ -1041,12 +1064,23 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 icon={<DeleteOutlined />}
                 onClick={() => handleEliminar(record.id, record.tipo, record)}
               />
+              {record.cheque && puedeVerCheques && (
+                <Button
+                  icon={<LinkOutlined />}
+                  onClick={() => verCheque(record)}
+                  title={`Ver cheque ${record.cheque.nroCheque}`}
+                />
+              )}
             </div>
           ),
         },
       ];
     }
   };
+
+  const puedeVerCheques = !isRepartidor;
+  const verCheque = (t) =>
+    navigate(`/cheques?buscar=${encodeURIComponent(t.cheque.nroCheque)}`);
 
   // Movimientos filtrados para mostrar. El saldo_restante ya viene calculado
   // sobre la lista completa, asi que cada fila conserva su saldo real.
@@ -1602,6 +1636,18 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                           </div>
                         )}
 
+                        {t.cheque && (
+                          <div className="flex justify-between items-center mb-2 text-sm">
+                            <span className="text-gray-500">
+                              Cheque {t.cheque.nroCheque} · {t.cheque.banco}
+                            </span>
+                            {puedeVerCheques && (
+                              <Button size="large" icon={<LinkOutlined />} onClick={() => verCheque(t)}>
+                                Ver cheque
+                              </Button>
+                            )}
+                          </div>
+                        )}
                         <div className="flex gap-2">
                           <Button
                             size="large"
@@ -1877,7 +1923,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
               }
 
               // 1) Registrar CHEQUE (usa centavos si tu backend espera Decimal)
-              await api("api/cheques", "POST", {
+              const chequeCreado = await api("api/cheques", "POST", {
                 banco: values.banco,
                 nroCheque: values.nroCheque,
                 fechaEmision: dayjs(values.fechaEmision).format("DD/MM/YYYY"),
@@ -1886,12 +1932,13 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 negocioId: Number(negocioSeleccionado),
               });
 
-              // 2) Registrar ENTREGA con método CHEQUE
+              // 2) Registrar ENTREGA con método CHEQUE (chequeId los vincula)
               await api("api/entregas", "POST", {
                 monto: montoNum,
                 metodoPagoId: Number(nuevoMetodoPago),
                 negocioId: Number(negocioSeleccionado),
                 cajaId,
+                chequeId: chequeCreado?.id,
               });
 
               message.success("Cheque y pago registrados");
