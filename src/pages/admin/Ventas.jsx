@@ -2277,11 +2277,10 @@ const Ventas = () => {
         styles={{
           body: {
             padding: "12px",
-            /* 80vh aplicaba solo al body: sumados header, footer y el offset
-               superior, el modal medía 823px en un viewport de 812 y en
-               pantallas de 667px los botones Cancelar/Finalizar quedaban
-               fuera. Se descuenta el cromo del modal para que entre entero. */
-            maxHeight: isMobile ? "calc(100vh - 190px)" : "auto",
+            /* El cuerpo es el único scroll del modal. Así el footer de
+               acciones permanece visible y no se encadenan scrolls con el
+               carrito de productos. */
+            maxHeight: "calc(100vh - 220px)",
             overflowY: "auto",
             overscrollBehavior: "contain",
           },
@@ -2563,13 +2562,9 @@ const Ventas = () => {
                   size="small"
                   style={{
                     boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                    /* En mobile se quita el scroll propio del carrito: cada
-                       item mide ~115px, en 250px entraban 2 y el resto quedaba
-                       tapado por el footer, ademas de encadenar 3 scrolls
-                       anidados. Ahora la lista crece y scrollea el modal. */
-                    maxHeight: isMobile ? "none" : 300,
-                    overflow: isMobile ? "visible" : "auto",
-                    overscrollBehavior: "contain",
+                    /* La lista crece y scrollea junto con el cuerpo del
+                       modal; se evita un segundo scroll dentro del carrito. */
+                    overflow: "visible",
                   }}
                   styles={{ body: { padding: 0 } }}
                 >

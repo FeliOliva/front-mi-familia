@@ -558,11 +558,9 @@ const EditarVentaModal = ({
               size="small"
               style={{
                 boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                /* Sin scroll propio en mobile: los items miden ~115px y en
-                   250px entraban 2, encadenando scrolls anidados. */
-                maxHeight: isMobile ? "none" : 300,
-                overflow: isMobile ? "visible" : "auto",
-                overscrollBehavior: "contain",
+                /* El cuerpo del modal es el único scroll para evitar que el
+                   carrito intercepte el gesto y oculte las acciones. */
+                overflow: "visible",
               }}
               styles={{ body: { padding: 0 } }}
             >
@@ -658,7 +656,14 @@ const EditarVentaModal = ({
       footer={footerBtns}
       width="800px"
       style={{ maxWidth: "800px", top: 60 }}
-      styles={{ body: { padding: 12, maxHeight: "70vh", overflowY: "auto", overscrollBehavior: "contain" } }}
+      styles={{
+        body: {
+          padding: 12,
+          maxHeight: "calc(100vh - 220px)",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
+        },
+      }}
       confirmLoading={saving}
     >
       {contenido}
