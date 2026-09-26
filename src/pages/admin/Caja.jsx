@@ -39,12 +39,9 @@ const CierreCajaGeneral = () => {
     api("api/entregas/totales-dia-caja", "GET").then((data) =>
       setTotalesEntregas(data)
     );
-    const usuarioId = localStorage.getItem("usuarioId");
-    if (usuarioId) {
-      api(`api/gastos/dia?usuarioId=${usuarioId}`, "GET").then((data) =>
-        setGastosDelDia(data || [])
-      );
-    }
+    api("api/gastos/dia?todos=1", "GET").then((data) =>
+      setGastosDelDia(data || [])
+    );
     api("api/cierres-caja", "GET").then((data) => setCierres(data));
   }, []);
   // NUEVA VERSIÓN
@@ -556,6 +553,16 @@ const CierreCajaGeneral = () => {
     doc.save(nombreArchivo);
   };
   const formatCurrency = (value) => `$${value?.toLocaleString() || 0}`;
+  const formatExpenseCurrency = (value) => {
+    const amount = Number(value) || 0;
+    return amount > 0 ? `-$${amount.toLocaleString()}` : "$0";
+  };
+  const formatSignedCurrency = (value) => {
+    const amount = Number(value) || 0;
+    return amount < 0
+      ? `-$${Math.abs(amount).toLocaleString()}`
+      : `$${amount.toLocaleString()}`;
+  };
   const formatDate = (date) => new Date(date).toLocaleString();
 
   // Ordenar cierres por fecha descendente (más recientes primero) y paginar
@@ -658,8 +665,8 @@ const CierreCajaGeneral = () => {
                             {gastosCaja.map((g) => (
                               <div key={g.id} className="flex justify-between gap-2">
                                 <span className="truncate">{g.motivo}</span>
-                                <span className="text-red-600">
-                                  -{formatCurrency(g.monto)}
+                                <span className={g.monto > 0 ? "text-red-600" : "text-gray-500"}>
+                                  {g.monto > 0 ? "-" : ""}{formatCurrency(g.monto)}
                                 </span>
                               </div>
                             ))}
@@ -728,8 +735,8 @@ const CierreCajaGeneral = () => {
                               className="flex justify-between text-sm"
                             >
                               <span className="truncate">{g.motivo}</span>
-                              <span className="text-red-600">
-                                -{formatCurrency(g.monto)}
+                              <span className={g.monto > 0 ? "text-red-600" : "text-gray-500"}>
+                                {g.monto > 0 ? "-" : ""}{formatCurrency(g.monto)}
                               </span>
                             </div>
                           ))}
@@ -852,12 +859,12 @@ const CierreCajaGeneral = () => {
                   <td>{formatCurrency(cierre.totalCuentaCorriente)}</td>
                   <td>{formatCurrency(valorCierre(cierre, "totalEfectivo"))}</td>
                   <td>{formatCurrency(valorCierre(cierre, "totalEfectivoBruto"))}</td>
-                  <td className="text-red-600">
-                    -{formatCurrency(cierre.totalGastos || 0)}
+                  <td className={cierre.totalGastos > 0 ? "text-red-600" : "text-gray-700"}>
+                    {formatExpenseCurrency(cierre.totalGastos)}
                   </td>
                   <td>{formatCurrency(cierre.ingresoLimpio)}</td>
                   <td>
-                    {formatCurrency(
+                    {formatSignedCurrency(
                       (cierre.ingresoLimpio || 0) -
                       valorCierre(cierre, "totalEfectivo")
                     )}
@@ -898,12 +905,14 @@ const CierreCajaGeneral = () => {
                     >
                       Editar Contado
                     </button>
-                    <button
-                      onClick={() => abrirModalAjuste(cierre)}
-                      className="ml-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors"
-                    >
-                      Ajuste posterior
-                    </button>
+                    {cierre.estado === 1 && (
+                      <button
+                        onClick={() => abrirModalAjuste(cierre)}
+                        className="ml-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors"
+                      >
+                        Ajuste posterior
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1005,8 +1014,8 @@ const CierreCajaGeneral = () => {
                     </div>
                     <div>
                       <span className="text-gray-500 block">Gastos</span>
-                      <div className="font-medium text-red-600">
-                        -{formatCurrency(cierre.totalGastos || 0)}
+                      <div className={`font-medium ${cierre.totalGastos > 0 ? "text-red-600" : "text-gray-700"}`}>
+                        {formatExpenseCurrency(cierre.totalGastos)}
                       </div>
                     </div>
                     <div>
@@ -1022,7 +1031,7 @@ const CierreCajaGeneral = () => {
                           diferencia >= 0 ? "text-green-600" : "text-red-600"
                         }`}
                       >
-                        {formatCurrency(diferencia)}
+                        {formatSignedCurrency(diferencia)}
                       </div>
                     </div>
                   </div>
@@ -1056,12 +1065,14 @@ const CierreCajaGeneral = () => {
                     >
                       Editar Contado
                     </button>
-                    <button
-                      onClick={() => abrirModalAjuste(cierre)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-                    >
-                      Ajuste posterior
-                    </button>
+                    {cierre.estado === 1 && (
+                      <button
+                        onClick={() => abrirModalAjuste(cierre)}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                      >
+                        Ajuste posterior
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1221,8 +1232,8 @@ const CierreCajaGeneral = () => {
         {cierreSeleccionado && (
           <div className="mb-3 text-sm text-gray-700">
             <span className="font-semibold">Gastos del cierre:</span>{" "}
-            <span className="text-red-600">
-              -{formatCurrency(cierreSeleccionado.totalGastos || 0)}
+            <span className={cierreSeleccionado.totalGastos > 0 ? "text-red-600" : "text-gray-700"}>
+              {formatExpenseCurrency(cierreSeleccionado.totalGastos)}
             </span>
           </div>
         )}
