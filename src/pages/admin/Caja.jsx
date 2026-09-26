@@ -1,27 +1,36 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../../services/api";
 import { PrinterOutlined } from "@ant-design/icons";
-import { Tooltip, Modal, Button, Input, Pagination } from "antd";
+import { Tooltip, Modal, Button, Input, Pagination, Select } from "antd";
 import ModalFooter from "../../components/ModalFooter";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 const CierreCajaGeneral = () => {
   const [cajas, setCajas] = useState([]);
-  const [montosContados, setMontosContados] = useState({});
-  const [loading, setLoading] = useState(false);
   const [totalesEntregas, setTotalesEntregas] = useState([]);
-  const [totalesGastos, setTotalesGastos] = useState([]);
   const [gastosDelDia, setGastosDelDia] = useState([]);
   const [cierres, setCierres] = useState([]);
   const [notification, setNotification] = useState(null);
   const [detalleMetodos, setDetalleMetodos] = useState([]);
+  const [ajustesDetalle, setAjustesDetalle] = useState([]);
   const [detalleModalVisible, setDetalleModalVisible] = useState(false);
   const [cierreSeleccionado, setCierreSeleccionado] = useState(null);
 
   const [modalEditarVisible, setModalEditarVisible] = useState(false);
   const [cierreEditando, setCierreEditando] = useState(null);
   const [montoEditando, setMontoEditando] = useState("");
+  const [modalAjusteVisible, setModalAjusteVisible] = useState(false);
+  const [cierreAjustando, setCierreAjustando] = useState(null);
+  const [negociosAjuste, setNegociosAjuste] = useState([]);
+  const [ajusteForm, setAjusteForm] = useState({
+    negocioId: undefined,
+    ventaId: "",
+    monto: "",
+    metodoPago: "EFECTIVO",
+    fechaOperacion: "",
+    motivo: "",
+  });
   const [paginaActual, setPaginaActual] = useState(1);
   const itemsPorPagina = 6;
 
@@ -29,9 +38,6 @@ const CierreCajaGeneral = () => {
     api("api/caja", "GET").then((data) => setCajas(data));
     api("api/entregas/totales-dia-caja", "GET").then((data) =>
       setTotalesEntregas(data)
-    );
-    api("api/gastos/totales-dia-caja", "GET").then((data) =>
-      setTotalesGastos(data)
     );
     const usuarioId = localStorage.getItem("usuarioId");
     if (usuarioId) {
@@ -44,11 +50,12 @@ const CierreCajaGeneral = () => {
   // NUEVA VERSIÓN
   const verDetalleMetodos = async (cierre) => {
     try {
-      const data = await api(
-        `api/cierre-caja/${cierre.id}/detalle-ventas`,
-        "GET"
-      );
+      const [data, ajustes] = await Promise.all([
+        api(`api/cierre-caja/${cierre.id}/detalle-ventas`, "GET"),
+        api(`api/cierre-caja/${cierre.id}/ajustes`, "GET"),
+      ]);
       setDetalleMetodos(data);
+      setAjustesDetalle(ajustes || []);
       setCierreSeleccionado(cierre);
       setDetalleModalVisible(true);
     } catch (error) {
@@ -73,6 +80,77 @@ const CierreCajaGeneral = () => {
     setCierreEditando(null);
     setMontoEditando("");
   };
+
+  const abrirModalAjuste = async (cierre) => {
+    try {
+      const data = await api("api/getAllNegocios", "GET");
+      setNegociosAjuste(Array.isArray(data) ? data : data?.negocios || []);
+    } catch (error) {
+      console.error("Error cargando negocios para el ajuste:", error);
+      showNotification("error", "Error", "No se pudieron cargar los negocios");
+      return;
+    }
+
+    const fechaCierre = new Date(cierre.fecha);
+    const fechaLocal = [
+      fechaCierre.getFullYear(),
+      String(fechaCierre.getMonth() + 1).padStart(2, "0"),
+      String(fechaCierre.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    setCierreAjustando(cierre);
+    setAjusteForm({
+      negocioId: undefined,
+      ventaId: "",
+      monto: "",
+      metodoPago: "EFECTIVO",
+      fechaOperacion: fechaLocal,
+      motivo: "",
+    });
+    setModalAjusteVisible(true);
+  };
+
+  const cerrarModalAjuste = () => {
+    setModalAjusteVisible(false);
+    setCierreAjustando(null);
+  };
+
+  const guardarAjuste = async () => {
+    if (!cierreAjustando) return;
+    const monto = Number(ajusteForm.monto);
+    if (!ajusteForm.negocioId || !ajusteForm.fechaOperacion || !ajusteForm.motivo.trim()) {
+      showNotification("error", "Datos incompletos", "Completá negocio, fecha y motivo.");
+      return;
+    }
+    if (!Number.isInteger(monto) || monto <= 0) {
+      showNotification("error", "Monto inválido", "Ingresá un monto entero mayor a cero.");
+      return;
+    }
+
+    try {
+      await api(
+        `api/cierre-caja/${cierreAjustando.id}/ajustes`,
+        "POST",
+        JSON.stringify({
+          negocioId: ajusteForm.negocioId,
+          ventaId: ajusteForm.ventaId ? Number(ajusteForm.ventaId) : undefined,
+          monto,
+          metodoPago: ajusteForm.metodoPago,
+          fechaOperacion: ajusteForm.fechaOperacion,
+          motivo: ajusteForm.motivo,
+        })
+      );
+      showNotification("success", "Ajuste registrado", "El cierre muestra ahora el total ajustado.");
+      setCierres(await api("api/cierres-caja", "GET"));
+      cerrarModalAjuste();
+    } catch (error) {
+      console.error("Error registrando ajuste de cierre:", error);
+      showNotification("error", "Error", error.message || "No se pudo registrar el ajuste");
+    }
+  };
+
+  const valorCierre = (cierre, campo) =>
+    cierre?.[`${campo}Ajustado`] ?? cierre?.[campo] ?? 0;
 
   const guardarMontoEditado = async () => {
     if (!cierreEditando) return;
@@ -118,98 +196,8 @@ const CierreCajaGeneral = () => {
     }
   };
 
-  const handleInputChange = (cajaId, value) => {
-    setMontosContados((prev) => ({ ...prev, [cajaId]: value }));
-  };
-
-  const getTotalSistema = (cajaId) => {
-    const encontrado = totalesEntregas.find((t) => t.cajaId === cajaId);
-    console.log("Total sistema", encontrado);
-    return encontrado ? encontrado.totalEntregado : 0;
-  };
-  const getTotalEfectivo = (cajaId) => {
-    const encontrado = totalesEntregas.find((t) => t.cajaId === cajaId);
-    return encontrado ? encontrado.totalEfectivo : 0;
-  };
-  const getTotalCuentaCorriente = (cajaId) => {
-    const encontrado = totalesEntregas.find((t) => t.cajaId === cajaId);
-    return encontrado ? encontrado.totalCuentaCorriente || 0 : 0;
-  };
-  const getTotalGastos = (cajaId) => {
-    const encontrado = totalesGastos.find((t) => t.cajaId === cajaId);
-    return encontrado ? encontrado.totalGastos || 0 : 0;
-  };
   const getGastosUsuarioPorCaja = (cajaId) =>
     gastosDelDia.filter((g) => Number(g.cajaId) === Number(cajaId));
-  const getMetodosPagoPorCaja = (cajaId) => {
-    const encontrado = totalesEntregas.find((t) => t.cajaId === cajaId);
-    // soporta ambas formas: metodosPago (futuro) o metodospago (actual)
-    return encontrado?.metodosPago || encontrado?.metodospago || [];
-  };
-
-  const handleCerrarCaja = async (caja) => {
-    setLoading(true);
-
-    const contado = montosContados[caja.id] || 0;
-    const totalSistema = getTotalSistema(caja.id); // totalEntregado del día
-    const efectivo = getTotalEfectivo(caja.id); // totalEfectivo del día (bruto)
-    const totalCC = getTotalCuentaCorriente(caja.id);
-    const totalGastos = getTotalGastos(caja.id);
-    const efectivoNeto = Math.max(0, efectivo - totalGastos);
-    const diferencia = contado - efectivoNeto; // solo para mostrar en UI
-    const metodosPago = getMetodosPagoPorCaja(caja.id);
-
-    try {
-      await api(
-        "api/cierre-caja",
-        "POST",
-        JSON.stringify({
-          cajaId: caja.id,
-          usuarioId: parseInt(localStorage.getItem("usuarioId")),
-          // Total de entregas (lo que trajo el repartidor)
-          totalVentas: totalSistema,
-          // Total cobrado por sistema (todas las entregas, cualquier método)
-          totalPagado: totalSistema,
-          // Total en cuenta corriente que vino de esa caja ese día
-          totalCuentaCorriente: totalCC,
-          // Total cobrado en EFECTIVO según entregas, descontando gastos
-          totalEfectivo: efectivoNeto,
-          totalEfectivoBruto: efectivo,
-          totalGastos: totalGastos,
-          // Efectivo contado físicamente por el admin
-          ingresoLimpio: contado,
-          // 1 = cierre definitivo
-          estado: 1,
-          metodosPago: metodosPago.map((m) => ({
-            nombre: m.nombre,
-            total: m.total,
-          })),
-        })
-      );
-
-      showNotification(
-        "success",
-        "Cierre realizado",
-        `Cierre de caja ${caja.nombre} guardado. Diferencia: $${diferencia}`
-      );
-
-      // refrescar
-      const nuevosCierres = await api("api/cierres-caja", "GET");
-      setCierres(nuevosCierres);
-      setPaginaActual(1); // Volver a la primera página después de crear un nuevo cierre
-      const nuevasCajas = await api("api/caja", "GET");
-      setCajas(nuevasCajas);
-      const nuevosTotales = await api("api/entregas/totales-dia-caja", "GET");
-      setTotalesEntregas(nuevosTotales);
-      const nuevosGastos = await api("api/gastos/totales-dia-caja", "GET");
-      setTotalesGastos(nuevosGastos);
-
-      setMontosContados((prev) => ({ ...prev, [caja.id]: 0 }));
-    } catch (error) {
-      showNotification("error", "Error al cerrar caja", error.message);
-    }
-    setLoading(false);
-  };
   // Agrupa registros [{metodoPago, nroVenta, monto}] por método
   const agruparPorMetodoYVenta = (items = []) => {
     const map = {};
@@ -294,7 +282,8 @@ const CierreCajaGeneral = () => {
     const grupos = agruparPorMetodoYVenta(detallesVentas);
 
     // Calcular diferencia
-    const diferencia = (cierre.ingresoLimpio || 0) - (cierre.totalEfectivo || 0);
+    const diferencia =
+      (cierre.ingresoLimpio || 0) - valorCierre(cierre, "totalEfectivo");
 
     // Calcular total general
     const totalGeneral = grupos.reduce((acc, g) => acc + g.total, 0);
@@ -353,10 +342,10 @@ const CierreCajaGeneral = () => {
     const colWidthMonto = contentWidth - colWidthConcepto;
 
     const resumenData = [
-      ["Total Ventas", `$${(cierre.totalVentas || 0).toLocaleString("es-AR")}`],
-      ["Total Cobrado", `$${(cierre.totalPagado || 0).toLocaleString("es-AR")}`],
+      ["Total Ventas", `$${valorCierre(cierre, "totalVentas").toLocaleString("es-AR")}`],
+      ["Total Cobrado", `$${valorCierre(cierre, "totalPagado").toLocaleString("es-AR")}`],
       ["Ventas a cuenta corriente", `$${(cierre.totalCuentaCorriente || 0).toLocaleString("es-AR")}`],
-      ["Total Efectivo (Sistema)", `$${(cierre.totalEfectivo || 0).toLocaleString("es-AR")}`],
+      ["Total Efectivo (Sistema)", `$${valorCierre(cierre, "totalEfectivo").toLocaleString("es-AR")}`],
       ["Gastos", `-$${(cierre.totalGastos || 0).toLocaleString("es-AR")}`],
       ["Efectivo Contado", `$${(cierre.ingresoLimpio || 0).toLocaleString("es-AR")}`],
       ["Diferencia", `${diferencia >= 0 ? "+" : ""}$${diferencia.toLocaleString("es-AR")}`],
@@ -566,22 +555,6 @@ const CierreCajaGeneral = () => {
     const nombreArchivo = `cierre-caja-${cierre.caja?.nombre?.replace(/\s+/g, "-") || "caja"}-${fechaCorta.replace(/\//g, "-")}.pdf`;
     doc.save(nombreArchivo);
   };
-  // Agrupa los métodos de pago por nombre y suma los totales
-  const agruparMetodos = (items = []) => {
-    const acc = {};
-    items.forEach((m) => {
-      const nombre = m.metodoPago || m.nombre;
-      if (!nombre) return;
-
-      const monto = Number(m.total || 0);
-      if (!acc[nombre]) {
-        acc[nombre] = { nombre, total: 0 };
-      }
-      acc[nombre].total += monto;
-    });
-    return Object.values(acc);
-  };
-
   const formatCurrency = (value) => `$${value?.toLocaleString() || 0}`;
   const formatDate = (date) => new Date(date).toLocaleString();
 
@@ -603,8 +576,6 @@ const CierreCajaGeneral = () => {
     const fin = inicio + itemsPorPagina;
     return cierresOrdenados.slice(inicio, fin);
   }, [cierresOrdenados, paginaActual]);
-
-  const totalPaginas = Math.ceil(cierresOrdenados.length / itemsPorPagina);
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
@@ -876,18 +847,19 @@ const CierreCajaGeneral = () => {
                     {cierre.caja?.nombre}
                   </td>
 
-                  <td>{formatCurrency(cierre.totalVentas)}</td>
-                  <td>{formatCurrency(cierre.totalPagado)}</td>
+                  <td>{formatCurrency(valorCierre(cierre, "totalVentas"))}</td>
+                  <td>{formatCurrency(valorCierre(cierre, "totalPagado"))}</td>
                   <td>{formatCurrency(cierre.totalCuentaCorriente)}</td>
-                  <td>{formatCurrency(cierre.totalEfectivo)}</td>
-                  <td>{formatCurrency(cierre.totalEfectivoBruto)}</td>
+                  <td>{formatCurrency(valorCierre(cierre, "totalEfectivo"))}</td>
+                  <td>{formatCurrency(valorCierre(cierre, "totalEfectivoBruto"))}</td>
                   <td className="text-red-600">
                     -{formatCurrency(cierre.totalGastos || 0)}
                   </td>
                   <td>{formatCurrency(cierre.ingresoLimpio)}</td>
                   <td>
                     {formatCurrency(
-                      (cierre.ingresoLimpio || 0) - (cierre.totalEfectivo || 0)
+                      (cierre.ingresoLimpio || 0) -
+                      valorCierre(cierre, "totalEfectivo")
                     )}
                   </td>
 
@@ -915,11 +887,22 @@ const CierreCajaGeneral = () => {
 
                   {/* Editar Contado */}
                   <td className="px-2 py-4 whitespace-nowrap">
+                    {cierre.ajusteTotal > 0 && (
+                      <div className="text-xs text-blue-700 mb-1">
+                        Ajustes: {formatCurrency(cierre.ajusteTotal)}
+                      </div>
+                    )}
                     <button
                       onClick={() => abrirModalEditar(cierre)}
                       className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors"
                     >
                       Editar Contado
+                    </button>
+                    <button
+                      onClick={() => abrirModalAjuste(cierre)}
+                      className="ml-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors"
+                    >
+                      Ajuste posterior
                     </button>
                   </td>
                 </tr>
@@ -948,7 +931,8 @@ const CierreCajaGeneral = () => {
         <div className="lg:hidden">
           {cierresPaginados.map((cierre) => {
             const diferencia =
-              (cierre.ingresoLimpio || 0) - (cierre.totalEfectivo || 0);
+              (cierre.ingresoLimpio || 0) -
+              valorCierre(cierre, "totalEfectivo");
 
             return (
               <div
@@ -990,13 +974,13 @@ const CierreCajaGeneral = () => {
                     <div>
                       <span className="text-gray-500 block">Total Ventas</span>
                       <div className="font-medium text-gray-900">
-                        {formatCurrency(cierre.totalVentas)}
+                        {formatCurrency(valorCierre(cierre, "totalVentas"))}
                       </div>
                     </div>
                     <div>
                       <span className="text-gray-500 block">Total Cobrado</span>
                       <div className="font-medium text-gray-900">
-                        {formatCurrency(cierre.totalPagado)}
+                        {formatCurrency(valorCierre(cierre, "totalPagado"))}
                       </div>
                     </div>
                     <div>
@@ -1010,13 +994,13 @@ const CierreCajaGeneral = () => {
                     <div>
                       <span className="text-gray-500 block">Total Efectivo</span>
                       <div className="font-medium text-gray-900">
-                        {formatCurrency(cierre.totalEfectivo)}
+                        {formatCurrency(valorCierre(cierre, "totalEfectivo"))}
                       </div>
                     </div>
                     <div>
                       <span className="text-gray-500 block">Efectivo Bruto</span>
                       <div className="font-medium text-gray-900">
-                        {formatCurrency(cierre.totalEfectivoBruto)}
+                        {formatCurrency(valorCierre(cierre, "totalEfectivoBruto"))}
                       </div>
                     </div>
                     <div>
@@ -1045,6 +1029,11 @@ const CierreCajaGeneral = () => {
 
                   {/* Botones de acción */}
                   <div className="flex flex-col gap-2">
+                    {cierre.ajusteTotal > 0 && (
+                      <div className="text-xs text-blue-700 text-center">
+                        Ajustes: {formatCurrency(cierre.ajusteTotal)}
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleImprimirCierre(cierre)}
@@ -1066,6 +1055,12 @@ const CierreCajaGeneral = () => {
                       className="w-full bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md text-sm font-medium"
                     >
                       Editar Contado
+                    </button>
+                    <button
+                      onClick={() => abrirModalAjuste(cierre)}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                    >
+                      Ajuste posterior
                     </button>
                   </div>
                 </div>
@@ -1093,6 +1088,86 @@ const CierreCajaGeneral = () => {
       </div>
 
       {/* Modales (fuera de las vistas condicionales para que funcionen en ambas) */}
+      <Modal
+        open={modalAjusteVisible}
+        onCancel={cerrarModalAjuste}
+        title={
+          cierreAjustando
+            ? `Registrar ajuste - ${cierreAjustando.caja?.nombre || "Caja"}`
+            : "Registrar ajuste"
+        }
+        footer={
+          <ModalFooter>
+            <Button onClick={cerrarModalAjuste}>Cancelar</Button>
+            <Button type="primary" onClick={guardarAjuste}>
+              Registrar ajuste
+            </Button>
+          </ModalFooter>
+        }
+      >
+        <p className="mb-3 text-sm text-gray-600">
+          Esta opción registra un pago omitido sin reabrir ni modificar el cierre original.
+        </p>
+        <label className="block mb-1 text-sm font-medium">Negocio</label>
+        <Select
+          className="w-full mb-3"
+          placeholder="Seleccioná el negocio"
+          value={ajusteForm.negocioId}
+          onChange={(value) => setAjusteForm((prev) => ({ ...prev, negocioId: value }))}
+          showSearch
+          optionFilterProp="label"
+          options={negociosAjuste.map((negocio) => ({
+            value: negocio.id,
+            label: negocio.nombre,
+          }))}
+        />
+        <label className="block mb-1 text-sm font-medium">Venta (opcional)</label>
+        <Input
+          className="mb-3"
+          type="number"
+          min="1"
+          value={ajusteForm.ventaId}
+          onChange={(e) => setAjusteForm((prev) => ({ ...prev, ventaId: e.target.value }))}
+          placeholder="ID de venta"
+        />
+        <label className="block mb-1 text-sm font-medium">Monto</label>
+        <Input
+          className="mb-3"
+          type="number"
+          min="1"
+          value={ajusteForm.monto}
+          onChange={(e) => setAjusteForm((prev) => ({ ...prev, monto: e.target.value }))}
+          placeholder="Monto del pago omitido"
+        />
+        <label className="block mb-1 text-sm font-medium">Método de pago</label>
+        <Select
+          className="w-full mb-3"
+          value={ajusteForm.metodoPago}
+          onChange={(value) => setAjusteForm((prev) => ({ ...prev, metodoPago: value }))}
+          options={[
+            { value: "EFECTIVO", label: "Efectivo" },
+            { value: "TRANSFERENCIA/QR", label: "Transferencia / QR" },
+            { value: "TARJETA DEBITO", label: "Tarjeta débito" },
+            { value: "TARJETA CREDITO", label: "Tarjeta crédito" },
+            { value: "CHEQUE", label: "Cheque" },
+          ]}
+        />
+        <label className="block mb-1 text-sm font-medium">Fecha real del pago</label>
+        <Input
+          className="mb-3"
+          type="date"
+          value={ajusteForm.fechaOperacion}
+          onChange={(e) => setAjusteForm((prev) => ({ ...prev, fechaOperacion: e.target.value }))}
+        />
+        <label className="block mb-1 text-sm font-medium">Motivo</label>
+        <Input.TextArea
+          rows={3}
+          value={ajusteForm.motivo}
+          onChange={(e) => setAjusteForm((prev) => ({ ...prev, motivo: e.target.value }))}
+          placeholder="Ej.: Pago recibido ayer; el repartidor se quedó sin batería"
+        />
+      </Modal>
+
       <Modal
         open={modalEditarVisible}
         onCancel={cerrarModalEditar}
@@ -1149,6 +1224,30 @@ const CierreCajaGeneral = () => {
             <span className="text-red-600">
               -{formatCurrency(cierreSeleccionado.totalGastos || 0)}
             </span>
+          </div>
+        )}
+        {ajustesDetalle.length > 0 && (
+          <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3">
+            <div className="font-semibold text-blue-900 mb-2">
+              Ajustes posteriores
+            </div>
+            <div className="space-y-2 text-sm">
+              {ajustesDetalle.map((ajuste) => (
+                <div key={ajuste.id} className="border-b border-blue-100 pb-2 last:border-b-0 last:pb-0">
+                  <div className="flex justify-between gap-3">
+                    <span>
+                      {ajuste.negocio?.nombre || "Sin negocio"} · {ajuste.metodoPago}
+                    </span>
+                    <span className="font-semibold">
+                      {formatCurrency(ajuste.monto)}
+                    </span>
+                  </div>
+                  <div className="text-xs text-blue-800">
+                    Pago: {new Date(ajuste.fechaOperacion).toLocaleDateString("es-AR")} · {ajuste.motivo}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
         {detalleMetodos.length > 0 && (() => {
