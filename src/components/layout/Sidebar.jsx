@@ -303,14 +303,28 @@ const MainLayout = () => {
         display: "flex",
         flexDirection: "column",
         height: "100%",
+        minHeight: 0,
+        overflow: "hidden",
       }}
     >
-      <LogoComponent collapsed={collapsed} />
-      <div className="demo-logo-vertical" />
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      <div style={{ flexShrink: 0 }}>
+        <LogoComponent collapsed={collapsed} />
+        <div className="demo-logo-vertical" />
+      </div>
+      <div
+        style={{
+          flex: "1 1 auto",
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+          overscrollBehavior: "contain",
+        }}
+      >
         <MainMenuItems />
       </div>
-      <LogoutButton />
+      <div style={{ flexShrink: 0 }}>
+        <LogoutButton />
+      </div>
     </div>
   );
 
@@ -326,6 +340,7 @@ const MainLayout = () => {
           style={{
             overflow: "hidden",
             height: "100vh",
+            minHeight: 0,
             position: "sticky",
             top: 0,
             left: 0,
