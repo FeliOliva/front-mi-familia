@@ -52,14 +52,15 @@ const shouldNotifyNuevaVenta = (ventaId) => {
     if (last && now - last < 5000) return false;
     data[ventaId] = now;
     sessionStorage.setItem(NOTIF_NUEVA_VENTA_KEY, JSON.stringify(data));
-  } catch {}
+  } catch {
+    // sessionStorage puede no estar disponible en navegación privada.
+  }
   return true;
 };
 
 const Entregas = ({ onOpenResumen }) => {
   const navigate = useNavigate();
   const [entregas, setEntregas] = useState([]);
-  const [filteredEntregas, setFilteredEntregas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedEntrega, setSelectedEntrega] = useState(null);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
@@ -73,9 +74,8 @@ const Entregas = ({ onOpenResumen }) => {
   const [estadoFiltro, setEstadoFiltro] = useState("todos");
   const [form] = Form.useForm();
   const [wsConnected, setWsConnected] = useState(false);
-  const [socket, setSocket] = useState(null);
   const [orden, setOrden] = useState("desc");
-  const [metodoPagos, setMetodoPagos] = useState([
+  const [metodoPagos] = useState([
     { id: 1, nombre: "EFECTIVO" },
     { id: 2, nombre: "TRANSFERENCIA/QR" },
     { id: 3, nombre: "TARJETA DEBITO" },
@@ -242,8 +242,6 @@ const Entregas = ({ onOpenResumen }) => {
 
     // Crear conexión WebSocket
     const ws = new WebSocket(`${wsBase}/?cajaId=${cajaId}`);
-    setSocket(ws);
-
     // Evento de conexión establecida
     ws.onopen = () => {
       console.log("Conexión WebSocket establecida");
@@ -279,11 +277,9 @@ const Entregas = ({ onOpenResumen }) => {
             nuevasVentas.forEach(actualizarVentasEspeciales);
 
             setEntregas(nuevasVentas);
-            setFilteredEntregas(nuevasVentas);
             setLoading(false);
           } else {
             setEntregas([]);
-            setFilteredEntregas([]);
             setLoading(false);
           }
           void refrescarTotalesCaja();
@@ -295,9 +291,6 @@ const Entregas = ({ onOpenResumen }) => {
             );
 
             setEntregas((prevEntregas) => [nuevaVenta, ...prevEntregas]);
-
-            const updatedEntregas = [nuevaVenta, ...entregas];
-            applyFilter(estadoFiltro, updatedEntregas);
 
             actualizarVentasEspeciales(nuevaVenta);
 
@@ -323,7 +316,6 @@ const Entregas = ({ onOpenResumen }) => {
               const next = prevEntregas.filter(
                 (v) => Number(v.id) !== idNum
               );
-              applyFilter(estadoFiltro, next);
               return next;
             });
             setVentasEspeciales((prev) =>
@@ -383,7 +375,6 @@ const Entregas = ({ onOpenResumen }) => {
               };
             });
 
-            applyFilter(estadoFiltro, next);
             return next;
           });
 
@@ -413,18 +404,6 @@ const Entregas = ({ onOpenResumen }) => {
     };
   }, []); // Este efecto solo se ejecuta una vez al montar el componente
 
-  // Función para aplicar filtro por estado
-  const applyFilter = (estado, entregasList = entregas) => {
-    if (estado === "todos") {
-      setFilteredEntregas(entregasList);
-    } else {
-      const estadoNum = parseInt(estado);
-      setFilteredEntregas(
-        entregasList.filter((entrega) => entrega.estado === estadoNum)
-      );
-    }
-  };
-
   // CAJA
   const getTotalesCaja = (cajaId) =>
     totalesEntregas.find((t) => Number(t.cajaId) === Number(cajaId)) || null;
@@ -453,7 +432,7 @@ const Entregas = ({ onOpenResumen }) => {
       setTotalesEntregas(totales); // 👈 necesario para el cierre
       setGastosDelDia(gastos || []);
       setModalCierreVisible(true);
-    } catch (err) {
+    } catch {
       setCierreNotification({
         type: "error",
         message: "No se pudo cargar la caja",
@@ -540,11 +519,6 @@ const Entregas = ({ onOpenResumen }) => {
       setCierreLoading(false);
     }
   };
-
-  // Efecto para aplicar el filtro cuando cambia el estado del filtro o las entregas
-  useEffect(() => {
-    applyFilter(estadoFiltro);
-  }, [estadoFiltro, entregas]);
 
   useEffect(() => {
     refrescarTotalesCaja();
@@ -990,7 +964,7 @@ const Entregas = ({ onOpenResumen }) => {
 
   return (
     <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-lg mx-auto py-2 px-4">
+      <div className="max-w-6xl mx-auto py-2 px-4">
         <div className="mb-2">
           <h1 className="text-3xl font-bold text-blue-700 text-center mb-6">
             Entregas Pendientes
@@ -1063,7 +1037,7 @@ const Entregas = ({ onOpenResumen }) => {
             </Select>
           </div>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
           {(() => {
             const filtradas = [...visibles]
               .filter(

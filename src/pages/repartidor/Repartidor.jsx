@@ -149,7 +149,7 @@ const Repartidor = () => {
       <header className="bg-white shadow-md sticky top-0 z-10">
         {/* Barra superior con logo y usuario */}
         <div className="p-3 border-b border-gray-100">
-          <div className="max-w-4xl mx-auto flex justify-between items-center">
+          <div className="max-w-7xl mx-auto flex justify-between items-center px-2 sm:px-4 lg:px-8">
             <div className="flex items-center gap-2">
               <img src="/logo.png" alt="Mi Familia" className="h-6 w-auto" />
               <h1 className="text-lg font-bold text-blue-700">Mi Familia</h1>
@@ -182,7 +182,7 @@ const Repartidor = () => {
         </div>
 
         {/* Menú de navegación */}
-        <nav className="max-w-4xl mx-auto">
+        <nav className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
           {/* gap-1: las 3 tabs eran adyacentes (separacion 0) y el dedo caia
               facil en la equivocada. */}
           <div className="flex gap-1 px-1">
@@ -232,7 +232,7 @@ const Repartidor = () => {
       </header>
 
       <main 
-        className="max-w-4xl mx-auto py-4 px-2"
+        className="max-w-7xl mx-auto py-4 px-2 sm:px-4 lg:px-8"
         onTouchStart={isMobile ? onTouchStart : undefined}
         onTouchMove={isMobile ? onTouchMove : undefined}
         onTouchEnd={isMobile ? onTouchEnd : undefined}
