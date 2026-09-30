@@ -51,11 +51,15 @@
  * del borde. "contain" mantiene el gesto dentro del documento sin desactivar
  * el scroll vertical ni el zoom manual.
  *
- * overflow-x: hidden ademas evita que un elemento que se pase de ancho
+ * overflow-x: clip ademas evita que un elemento que se pase de ancho
  * habilite scroll horizontal real en toda la pagina.
+ *
+ * Tiene que ser "clip" y no "hidden": "hidden" convierte al body en un
+ * contenedor de scroll y rompe el position: sticky del sidebar de escritorio
+ * (se iba para arriba al scrollear y dejaba un espacio en blanco).
  */
 html,
 body {
   overscroll-behavior-x: contain;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
