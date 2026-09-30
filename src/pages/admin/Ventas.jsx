@@ -371,7 +371,7 @@ const Ventas = () => {
   const [ventaEditando, setVentaEditando] = useState(null);
   const [unidadSeleccionada, setUnidadSeleccionada] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(8);
+  const [pageSize, setPageSize] = useState(8);
   const [totalVentas, setTotalVentas] = useState(0);
   const [loadingProducts, setLoadingProducts] = useState(false);
   // Para la caja
@@ -633,7 +633,7 @@ const Ventas = () => {
 
   useEffect(() => {
     fetchVentas(currentPage, debouncedBusqueda);
-  }, [currentPage, debouncedBusqueda, mostrarHistorico]);
+  }, [currentPage, pageSize, debouncedBusqueda, mostrarHistorico]);
 
   useEffect(() => {
     cargarNegocios();
@@ -2078,9 +2078,7 @@ const Ventas = () => {
               <Empty description="No hay ventas para mostrar" />
             ) : (
               <>
-                {ventasFiltradas
-                  .slice((currentPage - 1) * pageSize, currentPage * pageSize)
-                  .map((venta) => {
+                {ventasFiltradas.map((venta) => {
                     const esCC = venta.estadoPago === 4;
                     const pendiente =
                       venta.estadoPago === 1 || venta.estadoPago === 3;
@@ -2192,9 +2190,17 @@ const Ventas = () => {
                   current={currentPage}
                   pageSize={pageSize}
                   total={totalVentas}
-                  onChange={(page) => setCurrentPage(page)}
+                  onChange={(page, nextPageSize) => {
+                    if (nextPageSize !== pageSize) {
+                      setPageSize(nextPageSize);
+                      setCurrentPage(1);
+                      return;
+                    }
+                    setCurrentPage(page);
+                  }}
                   size="small"
-                  showSizeChanger={false}
+                  showSizeChanger
+                  pageSizeOptions={["8", "10", "20", "50"]}
                   className="flex justify-center mt-4"
                 />
               </>
@@ -2225,7 +2231,16 @@ const Ventas = () => {
               current: currentPage,
               pageSize: pageSize,
               total: totalVentas,
-              onChange: (page) => setCurrentPage(page),
+              onChange: (page, nextPageSize) => {
+                if (nextPageSize !== pageSize) {
+                  setPageSize(nextPageSize);
+                  setCurrentPage(1);
+                  return;
+                }
+                setCurrentPage(page);
+              },
+              showSizeChanger: true,
+              pageSizeOptions: ["8", "10", "20", "50"],
               responsive: true,
               position: ["bottomCenter"],
               size: "small",
@@ -2273,20 +2288,40 @@ const Ventas = () => {
           </ModalFooter>
         }
         width={isMobile ? "95%" : "800px"}
-        style={{ maxWidth: "800px", top: isMobile ? 8 : 100 }}
+        style={{ maxWidth: "800px", top: isMobile ? 8 : 24 }}
         styles={{
-          body: {
-            padding: "12px",
-            /* El cuerpo es el único scroll del modal. Así el footer de
-               acciones permanece visible y no se encadenan scrolls con el
-               carrito de productos. */
-            maxHeight: "calc(100vh - 220px)",
-            overflowY: "auto",
-            overscrollBehavior: "contain",
-          },
+          body: isMobile
+            ? {
+                padding: "12px",
+                // En mobile el footer queda dentro del viewport.
+                maxHeight: "calc(100vh - 190px)",
+                overflowY: "auto",
+                overscrollBehavior: "contain",
+              }
+            : {
+                padding: "12px",
+                /* Desktop: el modal entra entero en la pantalla y los botones
+                   Cancelar/Finalizar quedan siempre visibles. El cuerpo es una
+                   columna: las secciones de arriba mantienen su alto y el
+                   carrito ocupa lo que sobra, con scroll propio. Antes el
+                   carrito tenia un alto fijo de 300px y, con varios productos,
+                   el footer quedaba debajo del borde de la pantalla. */
+                maxHeight: "calc(100vh - 200px)",
+                display: "flex",
+                flexDirection: "column",
+                overflowY: "auto",
+                overscrollBehavior: "contain",
+              },
         }}
       >
-        <Form layout="vertical">
+        <Form
+          layout="vertical"
+          style={
+            isMobile
+              ? undefined
+              : { display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 0 }
+          }
+        >
           <div
             style={{
               background: "#f5f5f5",
@@ -2403,7 +2438,7 @@ const Ventas = () => {
               style={{ marginBottom: 8 }}
             >
               <Row gutter={[8, 8]}>
-                <Col span={isMobile ? 22 : 18}>
+                <Col span={isMobile ? 22 : 14}>
                   <Input
                     ref={inputBuscadorRef}
                     placeholder="Buscar producto (mínimo 2 letras) + Enter"
@@ -2525,6 +2560,9 @@ const Ventas = () => {
               background: "#f7f7f7",
               padding: "12px",
               borderRadius: "8px",
+              ...(isMobile
+                ? {}
+                : { flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column" }),
             }}
           >
             <div
@@ -2546,6 +2584,19 @@ const Ventas = () => {
                 <ShoppingCartOutlined style={{ marginRight: 8 }} />
                 Carrito de Productos
               </h3>
+              {!isMobile && productosSeleccionados.length > 0 && (
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    marginRight: 12,
+                    fontSize: 16,
+                    fontWeight: "bold",
+                    color: "#1890ff",
+                  }}
+                >
+                  Total: ${total.toLocaleString("es-AR")}
+                </span>
+              )}
               <Badge
                 count={productosSeleccionados.length}
                 style={{
@@ -2562,9 +2613,13 @@ const Ventas = () => {
                   size="small"
                   style={{
                     boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                    /* La lista crece y scrollea junto con el cuerpo del
-                       modal; se evita un segundo scroll dentro del carrito. */
-                    overflow: "visible",
+                    /* Mobile: la lista crece dentro del modal. Desktop: el
+                       carrito ocupa el alto que queda libre y scrollea por
+                       dentro (minimo ~1 producto visible). */
+                    ...(isMobile
+                      ? { overflow: "visible" }
+                      : { flex: "1 1 auto", minHeight: 130, overflow: "auto" }),
+                    overscrollBehavior: "contain",
                   }}
                   styles={{ body: { padding: 0 } }}
                 >
@@ -2575,28 +2630,32 @@ const Ventas = () => {
                   />
                 </Card>
 
-                <Divider style={{ margin: "12px 0 8px 0" }} />
+                {isMobile && (
+                  <>
+                    <Divider style={{ margin: "12px 0 8px 0" }} />
 
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    alignItems: "center",
-                    background: "#e6f7ff",
-                    padding: "10px",
-                    borderRadius: "6px",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "bold",
-                      color: "#1890ff",
-                    }}
-                  >
-                    Total: ${total.toLocaleString("es-AR")}
-                  </div>
-                </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        alignItems: "center",
+                        background: "#e6f7ff",
+                        padding: "10px",
+                        borderRadius: "6px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 16,
+                          fontWeight: "bold",
+                          color: "#1890ff",
+                        }}
+                      >
+                        Total: ${total.toLocaleString("es-AR")}
+                      </div>
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <Empty

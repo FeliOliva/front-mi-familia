@@ -427,7 +427,14 @@ const EditarVentaModal = ({
   );
 
   const contenido = (
-    <Form layout="vertical">
+    <Form
+      layout="vertical"
+      style={
+        isMobile
+          ? undefined
+          : { display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 0 }
+      }
+    >
       <div
         style={{
           background: "#f5f5f5",
@@ -522,7 +529,16 @@ const EditarVentaModal = ({
       </div>
 
       {/* Carrito */}
-      <div style={{ background: "#f7f7f7", padding: 12, borderRadius: 8 }}>
+      <div
+        style={{
+          background: "#f7f7f7",
+          padding: 12,
+          borderRadius: 8,
+          ...(isMobile
+            ? {}
+            : { flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column" }),
+        }}
+      >
         <div
           style={{
             display: "flex",
@@ -542,6 +558,19 @@ const EditarVentaModal = ({
             <ShoppingCartOutlined style={{ marginRight: 8 }} />
             Productos de la venta
           </h3>
+          {!isMobile && productosSeleccionados.length > 0 && (
+            <span
+              style={{
+                marginLeft: "auto",
+                marginRight: 12,
+                fontSize: 16,
+                fontWeight: "bold",
+                color: "#1890ff",
+              }}
+            >
+              Total: ${total.toLocaleString("es-AR")}
+            </span>
+          )}
           <Badge
             count={productosSeleccionados.length}
             style={{
@@ -558,9 +587,13 @@ const EditarVentaModal = ({
               size="small"
               style={{
                 boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                /* El cuerpo del modal es el único scroll para evitar que el
-                   carrito intercepte el gesto y oculte las acciones. */
-                overflow: "visible",
+                /* Mobile: la lista crece dentro del Drawer. Desktop: el
+                   carrito ocupa el alto que queda libre y scrollea por
+                   dentro (minimo ~1 producto visible). */
+                ...(isMobile
+                  ? { overflow: "visible" }
+                  : { flex: "1 1 auto", minHeight: 130, overflow: "auto" }),
+                overscrollBehavior: "contain",
               }}
               styles={{ body: { padding: 0 } }}
             >
@@ -571,22 +604,26 @@ const EditarVentaModal = ({
               />
             </Card>
 
-            <Divider style={{ margin: "12px 0 8px 0" }} />
+            {isMobile && (
+              <>
+                <Divider style={{ margin: "12px 0 8px 0" }} />
 
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                alignItems: "center",
-                background: "#e6f7ff",
-                padding: 10,
-                borderRadius: 6,
-              }}
-            >
-              <div style={{ fontSize: 16, fontWeight: "bold", color: "#1890ff" }}>
-                Total: ${total.toLocaleString("es-AR")}
-              </div>
-            </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    alignItems: "center",
+                    background: "#e6f7ff",
+                    padding: 10,
+                    borderRadius: 6,
+                  }}
+                >
+                  <div style={{ fontSize: 16, fontWeight: "bold", color: "#1890ff" }}>
+                    Total: ${total.toLocaleString("es-AR")}
+                  </div>
+                </div>
+              </>
+            )}
           </>
         ) : (
           <Empty
@@ -655,11 +692,16 @@ const EditarVentaModal = ({
       onCancel={handleCerrar}
       footer={footerBtns}
       width="800px"
-      style={{ maxWidth: "800px", top: 60 }}
+      style={{ maxWidth: "800px", top: 24 }}
       styles={{
         body: {
           padding: 12,
-          maxHeight: "calc(100vh - 220px)",
+          /* El modal entra entero en la pantalla y Cancelar/Actualizar quedan
+             siempre visibles: el cuerpo es una columna y el carrito ocupa el
+             alto que sobra, con scroll propio. */
+          maxHeight: "calc(100vh - 200px)",
+          display: "flex",
+          flexDirection: "column",
           overflowY: "auto",
           overscrollBehavior: "contain",
         },
