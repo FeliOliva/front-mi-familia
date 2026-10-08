@@ -136,7 +136,7 @@ const useIsMobile = () => {
 
   return isMobile;
 };
-const generarPDF = async (venta) => {
+export const generarPDF = async (venta) => {
   const detalles = Array.isArray(venta.detalles)
     ? venta.detalles
     : Array.isArray(venta.detalleventa)

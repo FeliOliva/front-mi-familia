@@ -35,6 +35,7 @@ import {
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import EditarVentaModal from "./EditarVentaModal";
+import { generarPDF } from "./Ventas";
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -764,6 +765,23 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 </li>
               ))}
             </ul>
+            <Button
+              type="primary"
+              icon={<PrinterOutlined />}
+              block={isMobile}
+              className="mt-4"
+              title="Imprimir venta"
+              aria-label="Imprimir venta"
+              onClick={async () => {
+                try {
+                  await generarPDF(venta);
+                } catch (err) {
+                  message.error("No se pudo generar el PDF: " + (err.message || "Error desconocido"));
+                }
+              }}
+            >
+              {isMobile ? "Imprimir venta" : null}
+            </Button>
           </div>
         );
       } else if (tipo === "Saldo Inicial" || record.esSaldoInicial) {
