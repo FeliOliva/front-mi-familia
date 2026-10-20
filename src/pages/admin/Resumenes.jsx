@@ -139,7 +139,14 @@ const generarPDFNotaCredito = (nota, negocioNombre = "") => {
   doc.save(`nota-credito-${nota.id}-${dayjs().format("DDMMYYYY")}.pdf`);
 };
 
-const prepararTransacciones = (raw) => {
+const formatearSaldo = (valor) => {
+  const monto = Number(valor) || 0;
+  return monto < 0
+    ? `-$${Math.abs(monto).toLocaleString("es-AR")}`
+    : `$${monto.toLocaleString("es-AR")}`;
+};
+
+const prepararTransacciones = (raw, saldoApertura = 0) => {
   const base = (raw || []).map((item) => {
     const fecha = item.fecha || item.fechaCreacion || new Date().toISOString();
     // Usar valor absoluto por si el backend envía con signo
@@ -202,7 +209,7 @@ const prepararTransacciones = (raw) => {
   // Calcular el saldo acumulado desde la más antigua hacia la más nueva
   // Primero invertimos el orden para calcular el saldo correctamente
   const ordenadasAscendente = [...ordenadasPorFecha].reverse();
-  let saldo = 0;
+  let saldo = Number(saldoApertura) || 0;
   const conSaldoAscendente = ordenadasAscendente.map((it) => {
     saldo += it.__montoFirmado;
     return {
@@ -270,6 +277,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
 
   // Estados para Saldo Inicial
   const [saldoInicial, setSaldoInicial] = useState(null);
+  const [saldoAnterior, setSaldoAnterior] = useState(0);
   const [isAddSaldoInicialOpen, setIsAddSaldoInicialOpen] = useState(false);
   const [montoSaldoInicial, setMontoSaldoInicial] = useState(null);
   const [descripcionSaldoInicial, setDescripcionSaldoInicial] = useState("");
@@ -854,10 +862,18 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     const endDate = dayjs(fechaFinFinal).format("YYYY-MM-DD");
 
     try {
-      const res = await api(
-        `api/resumenCuenta/negocio/${negocioIdNum}?startDate=${startDate}&endDate=${endDate}`
+      const [res, resSaldoAnterior] = await Promise.all([
+        api(`api/resumenCuenta/negocio/${negocioIdNum}?startDate=${startDate}&endDate=${endDate}`),
+        api(`api/resumenCuenta/negocio/${negocioIdNum}/saldo-anterior?startDate=${startDate}`),
+      ]);
+      const saldoApertura = Number(resSaldoAnterior?.saldoAnterior ?? 0);
+      // La fecha de carga del saldo inicial no es la fecha de los movimientos
+      // que representa. Ya está incluido en el saldo de apertura.
+      const movimientosDelPeriodo = (res || []).filter(
+        (item) => !(item.tipo === "Saldo Inicial" || item.esSaldoInicial)
       );
-      const transaccionesPreparadas = prepararTransacciones(res);
+      const transaccionesPreparadas = prepararTransacciones(movimientosDelPeriodo, saldoApertura);
+      setSaldoAnterior(saldoApertura);
       setTransacciones(transaccionesPreparadas);
       setHasBuscado(true);
       setFilterDrawerVisible(false);
@@ -901,6 +917,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     if (!value) {
       setNegocioSeleccionado(null);
       setHasBuscado(false);
+      setSaldoAnterior(0);
       setTransacciones([]);
       return;
     }
@@ -1134,7 +1151,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
       message.warning("Seleccioná un negocio primero");
       return;
     }
-    if (transacciones.length === 0) {
+    if (transacciones.length === 0 && !saldoAnterior) {
       message.warning("No hay movimientos para imprimir");
       return;
     }
@@ -1212,11 +1229,9 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
       .filter((t) => t.tipo === "Nota de Crédito")
       .reduce((acc, t) => acc + Number(t.monto ?? 0), 0);
 
-    const montoSaldoIni = saldoInicial?.monto || 0;
-
     const tableData = transaccionesOrdenadas.map((item) => {
       const tipoAbrev = item.tipo === "Nota de Crédito" ? "N.C." : item.tipo;
-      const signo = item.tipo === "Venta" ? "" : "-";
+      const signo = item.tipo === "Venta" ? "+" : "-";
       const detalle = item.esSaldoInicial ? "Saldo Inicial" : tipoAbrev;
       const obsMotivo =
         item.tipo === "Venta"
@@ -1231,9 +1246,19 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         item.numero || "-",
         obsMotivo,
         `${signo}$${item.monto_formateado}`,
-        `$${item.saldo_restante?.toLocaleString("es-AR") || "0"}`,
+        formatearSaldo(item.saldo_restante),
       ];
     });
+
+    // En orden descendente, el saldo de apertura queda al pie de la tabla.
+    tableData.push([
+      "-",
+      "Saldo anterior",
+      "-",
+      "Incluye movimientos previos",
+      "-",
+      formatearSaldo(saldoAnterior),
+    ]);
 
     autoTable(doc, {
       head: [["Fecha", "Detalle", "Nro", "Obs. / Motivo", "Monto", "Saldo"]],
@@ -1294,7 +1319,15 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
       ry += 6;
     };
 
-    row("Saldo inicial", `$${montoSaldoIni.toLocaleString("es-AR")}`);
+    row("Saldo anterior al período", formatearSaldo(saldoAnterior));
+    if (saldoInicial) {
+      doc.setFontSize(8);
+      doc.setTextColor(110);
+      doc.text(`Incluye saldo inicial de ${formatearSaldo(saldoInicial.monto)}`, leftX, ry);
+      ry += 5;
+      doc.setFontSize(10);
+      doc.setTextColor(0);
+    }
     row("Ventas", `+$${totalVentas.toLocaleString("es-AR")}`);
     row("Pagos", `-$${totalEntregas.toLocaleString("es-AR")}`);
     row("Notas de crédito", `-$${totalNC.toLocaleString("es-AR")}`);
@@ -1310,7 +1343,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     doc.setFont("helvetica", "bold");
     doc.text("Saldo pendiente", pageWidth / 2 - 35, ry + 9);
     doc.text(
-      `$${saldoPendiente.toLocaleString("es-AR")}`,
+      formatearSaldo(saldoPendiente),
       pageWidth / 2 + 35,
       ry + 9,
       { align: "right" }
@@ -1342,10 +1375,10 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
 
 
 
-  // Cálculo del saldo: (saldoInicial + ventas) - (pagos + notasCredito)
+  // Cálculo del saldo: deuda anterior al rango + movimientos del rango.
   // Positivo = cliente DEBE | Negativo = cliente tiene SALDO A FAVOR
   const saldoPendiente = React.useMemo(() => {
-    const montoSaldoIni = saldoInicial?.monto || 0;
+    const montoSaldoIni = Number(saldoAnterior) || 0;
 
     if (!Array.isArray(transacciones)) return montoSaldoIni;
 
@@ -1365,10 +1398,10 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         0
       );
 
-    // Fórmula: (saldoInicial + ventas) - (pagos + notasCredito)
+    // El saldo inicial ya está incluido una sola vez en saldoAnterior.
     // Puede ser negativo si el cliente pagó de más (saldo a favor)
     return montoSaldoIni + totalVentas - totalCreditos;
-  }, [transacciones, saldoInicial]);
+  }, [transacciones, saldoAnterior]);
 
   // Renderizado principal
   return (
@@ -1504,12 +1537,17 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         <div className="bg-white rounded-lg shadow-md mb-6">
           <div className="px-4 py-4">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Saldo Inicial */}
+              {/* Saldo de apertura del período */}
               <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Saldo Inicial</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Saldo anterior al período</p>
                 <p className="text-lg font-bold text-gray-700">
-                  ${(saldoInicial?.monto || 0).toLocaleString("es-AR")}
+                  {formatearSaldo(saldoAnterior)}
                 </p>
+                {saldoInicial && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Incluye saldo inicial de ${Number(saldoInicial.monto || 0).toLocaleString("es-AR")}
+                  </p>
+                )}
               </div>
               {/* Total Ventas */}
               <div className="bg-blue-50 rounded-lg p-3 text-center">
