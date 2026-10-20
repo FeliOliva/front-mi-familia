@@ -139,7 +139,7 @@ const generarPDFNotaCredito = (nota, negocioNombre = "") => {
   doc.save(`nota-credito-${nota.id}-${dayjs().format("DDMMYYYY")}.pdf`);
 };
 
-const prepararTransacciones = (raw, saldoApertura = 0) => {
+const prepararTransacciones = (raw) => {
   const base = (raw || []).map((item) => {
     const fecha = item.fecha || item.fechaCreacion || new Date().toISOString();
     // Usar valor absoluto por si el backend envía con signo
@@ -202,21 +202,8 @@ const prepararTransacciones = (raw, saldoApertura = 0) => {
   // Calcular el saldo acumulado desde la más antigua hacia la más nueva
   // Primero invertimos el orden para calcular el saldo correctamente
   const ordenadasAscendente = [...ordenadasPorFecha].reverse();
-  let saldo = Number(saldoApertura) || 0;
+  let saldo = 0;
   const conSaldoAscendente = ordenadasAscendente.map((it) => {
-    if (it.tipo === "Saldo Inicial" || it.esSaldoInicial) {
-      const montoSaldoCorte = it.__montoOriginal;
-      const ajusteSaldoInicial = montoSaldoCorte - saldo;
-      saldo = montoSaldoCorte;
-      return {
-        ...it,
-        __montoFirmado: ajusteSaldoInicial,
-        __montoOriginal: Math.abs(ajusteSaldoInicial),
-        ajusteSaldoInicial,
-        saldo_restante: saldo,
-        monto_formateado: Math.abs(ajusteSaldoInicial).toLocaleString("es-AR"),
-      };
-    }
     saldo += it.__montoFirmado;
     return {
       ...it,
@@ -283,7 +270,6 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
 
   // Estados para Saldo Inicial
   const [saldoInicial, setSaldoInicial] = useState(null);
-  const [saldoAnterior, setSaldoAnterior] = useState(0);
   const [isAddSaldoInicialOpen, setIsAddSaldoInicialOpen] = useState(false);
   const [montoSaldoInicial, setMontoSaldoInicial] = useState(null);
   const [descripcionSaldoInicial, setDescripcionSaldoInicial] = useState("");
@@ -868,22 +854,10 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     const endDate = dayjs(fechaFinFinal).format("YYYY-MM-DD");
 
     try {
-      const [res, resSaldoAnterior] = await Promise.all([
-        api(`api/resumenCuenta/negocio/${negocioIdNum}?startDate=${startDate}&endDate=${endDate}`),
-        api(`api/resumenCuenta/negocio/${negocioIdNum}/saldo-anterior?startDate=${startDate}`),
-      ]);
-      const inicioPeriodo = dayjs(fechaInicioFinal).startOf("day");
-      const finPeriodo = dayjs(fechaFinFinal).endOf("day");
-      const saldoInicialEnPeriodo = (res || []).filter((item) => {
-        if (!(item.tipo === "Saldo Inicial" || item.esSaldoInicial)) return true;
-        const fechaSaldo = dayjs(item.fecha || item.fechaCreacion);
-        return fechaSaldo.isValid()
-          && !fechaSaldo.isBefore(inicioPeriodo)
-          && !fechaSaldo.isAfter(finPeriodo);
-      });
-      const saldoApertura = Number(resSaldoAnterior?.saldoAnterior ?? 0);
-      const transaccionesPreparadas = prepararTransacciones(saldoInicialEnPeriodo, saldoApertura);
-      setSaldoAnterior(saldoApertura);
+      const res = await api(
+        `api/resumenCuenta/negocio/${negocioIdNum}?startDate=${startDate}&endDate=${endDate}`
+      );
+      const transaccionesPreparadas = prepararTransacciones(res);
       setTransacciones(transaccionesPreparadas);
       setHasBuscado(true);
       setFilterDrawerVisible(false);
@@ -1238,16 +1212,11 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
       .filter((t) => t.tipo === "Nota de Crédito")
       .reduce((acc, t) => acc + Number(t.monto ?? 0), 0);
 
-    const montoSaldoIni = saldoAnterior || 0;
-    const ajusteSaldoInicialEnPeriodo = transacciones
-      .filter((t) => t.tipo === "Saldo Inicial" || t.esSaldoInicial)
-      .reduce((acc, t) => acc + Number(t.ajusteSaldoInicial || 0), 0);
+    const montoSaldoIni = saldoInicial?.monto || 0;
 
     const tableData = transaccionesOrdenadas.map((item) => {
       const tipoAbrev = item.tipo === "Nota de Crédito" ? "N.C." : item.tipo;
-      const signo = item.tipo === "Saldo Inicial"
-        ? (Number(item.ajusteSaldoInicial || 0) < 0 ? "-" : "+")
-        : item.tipo === "Venta" ? "+" : "-";
+      const signo = item.tipo === "Venta" ? "" : "-";
       const detalle = item.esSaldoInicial ? "Saldo Inicial" : tipoAbrev;
       const obsMotivo =
         item.tipo === "Venta"
@@ -1325,11 +1294,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
       ry += 6;
     };
 
-    row("Saldo anterior al período", `$${montoSaldoIni.toLocaleString("es-AR")}`);
-    if (ajusteSaldoInicialEnPeriodo) {
-      const signoAjuste = ajusteSaldoInicialEnPeriodo < 0 ? "-" : "+";
-      row("Ajuste por saldo inicial", `${signoAjuste}$${Math.abs(ajusteSaldoInicialEnPeriodo).toLocaleString("es-AR")}`);
-    }
+    row("Saldo inicial", `$${montoSaldoIni.toLocaleString("es-AR")}`);
     row("Ventas", `+$${totalVentas.toLocaleString("es-AR")}`);
     row("Pagos", `-$${totalEntregas.toLocaleString("es-AR")}`);
     row("Notas de crédito", `-$${totalNC.toLocaleString("es-AR")}`);
@@ -1377,18 +1342,33 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
 
 
 
-  // Cálculo del saldo: saldo anterior al período + movimientos incluidos en el rango.
+  // Cálculo del saldo: (saldoInicial + ventas) - (pagos + notasCredito)
   // Positivo = cliente DEBE | Negativo = cliente tiene SALDO A FAVOR
   const saldoPendiente = React.useMemo(() => {
-    const montoSaldoIni = Number(saldoAnterior) || 0;
+    const montoSaldoIni = saldoInicial?.monto || 0;
 
     if (!Array.isArray(transacciones)) return montoSaldoIni;
 
-    // Saldo inicial funciona como punto de corte, no se vuelve a sumar sobre los movimientos anteriores.
-    return transacciones.length
-      ? Number(transacciones[0].saldo_restante || 0)
-      : montoSaldoIni;
-  }, [transacciones, saldoAnterior]);
+    const totalVentas = transacciones
+      .filter((t) => t.tipo === "Venta")
+      .reduce(
+        (acc, t) =>
+          acc + Number(t.total_con_descuento ?? t.total ?? t.monto ?? 0),
+        0
+      );
+
+    const totalCreditos = transacciones
+      .filter((t) => t.tipo === "Entrega" || t.tipo === "Nota de Crédito")
+      .reduce(
+        (acc, t) =>
+          acc + Number(t.monto ?? t.total ?? t.total_con_descuento ?? 0),
+        0
+      );
+
+    // Fórmula: (saldoInicial + ventas) - (pagos + notasCredito)
+    // Puede ser negativo si el cliente pagó de más (saldo a favor)
+    return montoSaldoIni + totalVentas - totalCreditos;
+  }, [transacciones, saldoInicial]);
 
   // Renderizado principal
   return (
@@ -1526,9 +1506,9 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {/* Saldo Inicial */}
               <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Saldo anterior al período</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Saldo Inicial</p>
                 <p className="text-lg font-bold text-gray-700">
-                  ${(saldoAnterior || 0).toLocaleString("es-AR")}
+                  ${(saldoInicial?.monto || 0).toLocaleString("es-AR")}
                 </p>
               </div>
               {/* Total Ventas */}
