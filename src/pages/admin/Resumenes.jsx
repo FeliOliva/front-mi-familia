@@ -36,6 +36,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import EditarVentaModal from "./EditarVentaModal";
 import { generarPDF } from "./Ventas";
+import { prepararResumenImpresion } from "../../utils/resumenImpresion";
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -227,6 +228,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const selectNegocioRef = useRef(null);
+  const consultaActualRef = useRef(0);
   // Obtener rol del usuario (1 = encargado de ventas)
   const userRole = Number(localStorage.getItem("rol"));
   const isEncargadoVentas = userRole === 1;
@@ -237,6 +239,8 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
   const [fechaInicio, setFechaInicio] = useState(dayjs("2025-12-01"));
   const [fechaFin, setFechaFin] = useState(dayjs());
   const [transacciones, setTransacciones] = useState([]);
+  const [consultaCargada, setConsultaCargada] = useState(null);
+  const [cargandoResumen, setCargandoResumen] = useState(false);
   // Buscador de movimientos (ventas, pagos, notas de credito)
   const [busquedaMov, setBusquedaMov] = useState("");
   const [filtroTipoMov, setFiltroTipoMov] = useState("todos");
@@ -860,7 +864,17 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
 
     const startDate = dayjs(fechaInicioFinal).format("YYYY-MM-DD");
     const endDate = dayjs(fechaFinFinal).format("YYYY-MM-DD");
+    if (dayjs(startDate).isAfter(dayjs(endDate))) {
+      message.warning("La fecha inicial no puede ser posterior a la fecha final");
+      return;
+    }
 
+    const consultaId = ++consultaActualRef.current;
+    setCargandoResumen(true);
+    setConsultaCargada(null);
+    setHasBuscado(false);
+    setSaldoAnterior(0);
+    setTransacciones([]);
     try {
       const [res, resSaldoAnterior] = await Promise.all([
         api(`api/resumenCuenta/negocio/${negocioIdNum}?startDate=${startDate}&endDate=${endDate}`),
@@ -873,18 +887,33 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         (item) => !(item.tipo === "Saldo Inicial" || item.esSaldoInicial)
       );
       const transaccionesPreparadas = prepararTransacciones(movimientosDelPeriodo, saldoApertura);
+      if (consultaId !== consultaActualRef.current) return;
       setSaldoAnterior(saldoApertura);
       setTransacciones(transaccionesPreparadas);
+      setConsultaCargada({ negocioId: negocioIdNum, startDate, endDate });
       setHasBuscado(true);
       setFilterDrawerVisible(false);
     } catch (error) {
+      if (consultaId !== consultaActualRef.current) return;
       console.error("Error al cargar las transacciones:", error);
       message.error("Error al cargar las transacciones: " + (error.message || "Error desconocido"));
+    } finally {
+      if (consultaId === consultaActualRef.current) setCargandoResumen(false);
     }
+  };
+
+  const invalidarConsulta = () => {
+    consultaActualRef.current += 1;
+    setConsultaCargada(null);
+    setCargandoResumen(false);
+    setHasBuscado(false);
+    setSaldoAnterior(0);
+    setTransacciones([]);
   };
 
   // Función para actualizar tanto fechaInicio como fechaFin cuando se usa RangePicker
   const handleRangePickerChange = (dates) => {
+    invalidarConsulta();
     if (dates && dates.length === 2) {
       setFechaInicio(dates[0]);
       setFechaFin(dates[1]);
@@ -914,11 +943,9 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
   };
 
   const handleNegocioChange = (value) => {
+    invalidarConsulta();
     if (!value) {
       setNegocioSeleccionado(null);
-      setHasBuscado(false);
-      setSaldoAnterior(0);
-      setTransacciones([]);
       return;
     }
     setNegocioSeleccionado(value);
@@ -1145,14 +1172,26 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
       (qNum.length > 0 && monto.includes(qNum))
     );
   });
+  const resumenListo = Boolean(
+    hasBuscado && !cargandoResumen && consultaCargada &&
+    consultaCargada.negocioId === Number(negocioSeleccionado) &&
+    consultaCargada.startDate === fechaInicio?.format("YYYY-MM-DD") &&
+    consultaCargada.endDate === fechaFin?.format("YYYY-MM-DD")
+  );
 
   const handleImprimirResumen = async () => {
     if (!negocioSeleccionado) {
       message.warning("Seleccioná un negocio primero");
       return;
     }
-    if (transacciones.length === 0 && !saldoAnterior) {
-      message.warning("No hay movimientos para imprimir");
+    if (!resumenListo) {
+      message.warning("Esperá a que se cargue el rango de fechas seleccionado");
+      return;
+    }
+    const { esCompleto, movimientos, totales, etiqueta, signo, totalSeleccionado } =
+      prepararResumenImpresion(transacciones, filtroTipoMov);
+    if (movimientos.length === 0 && (!esCompleto || !saldoAnterior)) {
+      message.warning("No hay movimientos del tipo seleccionado para imprimir en este período");
       return;
     }
 
@@ -1181,7 +1220,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0);
     doc.text(
-      `Resumen del cliente ${negocio?.nombre || "-"}`,
+      `${esCompleto ? "Resumen" : etiqueta} del cliente ${negocio?.nombre || "-"}`,
       pageWidth / 2,
       y + 10,
       { align: "center" }
@@ -1194,14 +1233,12 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     doc.setFont("helvetica", "normal");
     doc.setTextColor(90);
 
-    if (fechaInicio && fechaFin) {
-      doc.text(
-        `Período: ${dayjs(fechaInicio).format("DD-MM-YYYY")} a ${dayjs(fechaFin).format("DD-MM-YYYY")}`,
-        pageWidth / 2,
-        y + 18,
-        { align: "center" }
-      );
-    }
+    doc.text(
+      `Período: ${dayjs(consultaCargada.startDate).format("DD-MM-YYYY")} a ${dayjs(consultaCargada.endDate).format("DD-MM-YYYY")}`,
+      pageWidth / 2,
+      y + 18,
+      { align: "center" }
+    );
 
     /* =========================
        SEPARADOR SUAVE
@@ -1215,23 +1252,11 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     /* =========================
        TRANSACCIONES
     ========================= */
-    const transaccionesOrdenadas = [...transacciones];
-
-    const totalVentas = transacciones
-      .filter((t) => t.tipo === "Venta")
-      .reduce((acc, t) => acc + Number(t.total_con_descuento ?? t.total ?? t.monto ?? 0), 0);
-
-    const totalEntregas = transacciones
-      .filter((t) => t.tipo === "Entrega")
-      .reduce((acc, t) => acc + Number(t.monto ?? 0), 0);
-
-    const totalNC = transacciones
-      .filter((t) => t.tipo === "Nota de Crédito")
-      .reduce((acc, t) => acc + Number(t.monto ?? 0), 0);
-
-    const tableData = transaccionesOrdenadas.map((item) => {
-      const tipoAbrev = item.tipo === "Nota de Crédito" ? "N.C." : item.tipo;
-      const signo = item.tipo === "Venta" ? "+" : "-";
+    const tableData = movimientos.map((item) => {
+      const tipoAbrev = item.tipo === "Nota de Crédito"
+        ? "N.C."
+        : item.tipo === "Entrega" ? "Pago" : item.tipo;
+      const signoMovimiento = item.tipo === "Venta" ? "+" : "-";
       const detalle = item.esSaldoInicial ? "Saldo Inicial" : tipoAbrev;
       const obsMotivo =
         item.tipo === "Venta"
@@ -1240,28 +1265,35 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
             ? (item.motivo && String(item.motivo).trim()) || "-"
             : "-";
 
-      return [
+      const fila = [
         dayjs(item.fecha).format("DD/MM/YY"),
         detalle,
         item.numero || "-",
         obsMotivo,
-        `${signo}$${item.monto_formateado}`,
-        formatearSaldo(item.saldo_restante),
+        `${signoMovimiento}$${item.monto_formateado}`,
       ];
+      if (esCompleto) {
+        fila.push(formatearSaldo(item.saldo_restante));
+      }
+      return fila;
     });
 
-    // En orden descendente, el saldo de apertura queda al pie de la tabla.
-    tableData.push([
-      "-",
-      "Saldo anterior",
-      "-",
-      "Incluye movimientos previos",
-      "-",
-      formatearSaldo(saldoAnterior),
-    ]);
+    if (esCompleto) {
+      // En orden descendente, el saldo de apertura queda al pie de la tabla.
+      tableData.push([
+        "-",
+        "Saldo anterior",
+        "-",
+        "Incluye movimientos previos",
+        "-",
+        formatearSaldo(saldoAnterior),
+      ]);
+    }
 
     autoTable(doc, {
-      head: [["Fecha", "Detalle", "Nro", "Obs. / Motivo", "Monto", "Saldo"]],
+      head: [esCompleto
+        ? ["Fecha", "Detalle", "Nro", "Obs. / Motivo", "Monto", "Saldo"]
+        : ["Fecha", "Detalle", "Nro", "Obs. / Motivo", "Monto"]],
       body: tableData,
       startY: y,
       theme: "striped",
@@ -1277,13 +1309,19 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         fontStyle: "bold",
         halign: "center",
       },
-      columnStyles: {
+      columnStyles: esCompleto ? {
         0: { cellWidth: 20, halign: "center" },
         1: { cellWidth: 28, halign: "center" },
         2: { cellWidth: 20, halign: "center" },
         3: { cellWidth: 44, halign: "center" },
         4: { cellWidth: 28, halign: "right" },
         5: { cellWidth: 28, halign: "right", fontStyle: "bold" },
+      } : {
+        0: { cellWidth: 23, halign: "center" },
+        1: { cellWidth: 34, halign: "center" },
+        2: { cellWidth: 23, halign: "center" },
+        3: { cellWidth: 64, halign: "center" },
+        4: { cellWidth: 38, halign: "right", fontStyle: "bold" },
       },
       alternateRowStyles: { fillColor: [248, 248, 248] },
     });
@@ -1293,7 +1331,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     ========================= */
     let ry = doc.lastAutoTable.finalY + 12;
 
-    if (ry + 60 > pageHeight - 20) {
+    if (ry + (esCompleto ? 60 : 24) > pageHeight - 20) {
       doc.addPage();
       ry = 20;
     }
@@ -1303,7 +1341,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
 
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text("Resumen de cuenta", pageWidth / 2, ry, { align: "center" });
+    doc.text(esCompleto ? "Resumen de cuenta" : `Total de ${etiqueta.toLowerCase()}`, pageWidth / 2, ry, { align: "center" });
 
     ry += 8;
     doc.setFontSize(10);
@@ -1319,35 +1357,39 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
       ry += 6;
     };
 
-    row("Saldo anterior al período", formatearSaldo(saldoAnterior));
-    if (saldoInicial) {
-      doc.setFontSize(8);
-      doc.setTextColor(110);
-      doc.text(`Incluye saldo inicial de ${formatearSaldo(saldoInicial.monto)}`, leftX, ry);
-      ry += 5;
-      doc.setFontSize(10);
-      doc.setTextColor(0);
+    if (esCompleto) {
+      row("Saldo anterior al período", formatearSaldo(saldoAnterior));
+      if (saldoInicial) {
+        doc.setFontSize(8);
+        doc.setTextColor(110);
+        doc.text(`Incluye saldo inicial de ${formatearSaldo(saldoInicial.monto)}`, leftX, ry);
+        ry += 5;
+        doc.setFontSize(10);
+        doc.setTextColor(0);
+      }
+      row("Ventas", `+$${totales.Venta.toLocaleString("es-AR")}`);
+      row("Pagos", `-$${totales.Entrega.toLocaleString("es-AR")}`);
+      row("Notas de crédito", `-$${totales["Nota de Crédito"].toLocaleString("es-AR")}`);
+
+      /* =========================
+         SALDO PENDIENTE (centrado)
+      ========================= */
+      ry += 6;
+      doc.setFillColor(238, 248, 240);
+      doc.roundedRect(14, ry, pageWidth - 28, 14, 2, 2, "F");
+
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Saldo pendiente", pageWidth / 2 - 35, ry + 9);
+      doc.text(
+        formatearSaldo(saldoPendiente),
+        pageWidth / 2 + 35,
+        ry + 9,
+        { align: "right" }
+      );
+    } else {
+      row(etiqueta, `${signo}$${totalSeleccionado.toLocaleString("es-AR")}`);
     }
-    row("Ventas", `+$${totalVentas.toLocaleString("es-AR")}`);
-    row("Pagos", `-$${totalEntregas.toLocaleString("es-AR")}`);
-    row("Notas de crédito", `-$${totalNC.toLocaleString("es-AR")}`);
-
-    /* =========================
-       SALDO PENDIENTE (centrado)
-    ========================= */
-    ry += 6;
-    doc.setFillColor(238, 248, 240);
-    doc.roundedRect(14, ry, pageWidth - 28, 14, 2, 2, "F");
-
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("Saldo pendiente", pageWidth / 2 - 35, ry + 9);
-    doc.text(
-      formatearSaldo(saldoPendiente),
-      pageWidth / 2 + 35,
-      ry + 9,
-      { align: "right" }
-    );
 
     /* =========================
        FOOTER
@@ -1367,7 +1409,8 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     /* =========================
        GUARDAR
     ========================= */
-    const nombreArchivo = `resumen-${negocio?.nombre?.replace(/\s+/g, "-") || "cuenta"}-${dayjs().format("DDMMYYYY")}.pdf`;
+    const tipoArchivo = esCompleto ? "cuenta" : etiqueta.toLowerCase().replace(/\s+/g, "-");
+    const nombreArchivo = `resumen-${tipoArchivo}-${negocio?.nombre?.replace(/\s+/g, "-") || "cuenta"}-${consultaCargada.startDate}-${consultaCargada.endDate}.pdf`;
     doc.save(nombreArchivo);
 
     message.success("PDF generado correctamente");
@@ -1414,6 +1457,9 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
           </h2>
         </div>
         <div className="px-4 py-4 space-y-4">
+          <p className="text-sm text-gray-600">
+            El resumen para imprimir usa el tipo de movimiento y el rango de fechas seleccionados.
+          </p>
           {/* Primera fila: Filtros principales */}
           <div className="flex flex-col sm:flex-row flex-wrap gap-2 md:gap-4 items-start sm:items-center">
             {isMobile ? (
@@ -1444,14 +1490,20 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 <div className="flex gap-2 w-full mb-2">
                   <DatePicker
                     value={fechaInicio}
-                    onChange={(date) => setFechaInicio(date)}
+                    onChange={(date) => {
+                      invalidarConsulta();
+                      setFechaInicio(date);
+                    }}
                     style={{ width: "100%" }}
                     format="DD/MM/YYYY"
                     placeholder="Fecha inicial"
                   />
                   <DatePicker
                     value={fechaFin}
-                    onChange={(date) => setFechaFin(date)}
+                    onChange={(date) => {
+                      invalidarConsulta();
+                      setFechaFin(date);
+                    }}
                     style={{ width: "100%" }}
                     format="DD/MM/YYYY"
                     placeholder="Fecha final"
@@ -1524,6 +1576,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 icon={<PrinterOutlined />}
                 onClick={handleImprimirResumen}
                 type="primary"
+                disabled={!resumenListo}
               >
                 Imprimir
               </Button>
@@ -1593,7 +1646,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
       <div className="bg-white rounded-lg shadow-md mb-6">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Movimientos</h2>
-          {transacciones.length > 0 && (
+          {hasBuscado && (
             <div className="flex flex-col gap-2 mt-3 sm:flex-row sm:items-center">
               <Segmented
                 value={filtroTipoMov}
@@ -2259,6 +2312,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
               icon={<PrinterOutlined />}
               onClick={handleImprimirResumen}
               type="primary"
+              disabled={!resumenListo}
               style={{ width: "100%" }}
             >
               Imprimir
