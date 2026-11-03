@@ -1178,6 +1178,11 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     consultaCargada.startDate === fechaInicio?.format("YYYY-MM-DD") &&
     consultaCargada.endDate === fechaFin?.format("YYYY-MM-DD")
   );
+  const textoImprimir = busquedaMov.trim()
+    ? "Imprimir visibles"
+    : filtroTipoMov === "Venta" ? "Imprimir ventas"
+      : filtroTipoMov === "Entrega" ? "Imprimir pagos"
+        : filtroTipoMov === "Nota de Crédito" ? "Imprimir N/C" : "Imprimir todo";
 
   const handleImprimirResumen = async () => {
     if (!negocioSeleccionado) {
@@ -1188,8 +1193,8 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
       message.warning("Esperá a que se cargue el rango de fechas seleccionado");
       return;
     }
-    const { esCompleto, movimientos, totales, etiqueta, signo, totalSeleccionado } =
-      prepararResumenImpresion(transacciones, filtroTipoMov);
+    const { esCompleto, movimientos, etiqueta, filasTotales } =
+      prepararResumenImpresion(transaccionesFiltradas, filtroTipoMov, Boolean(busquedaMov.trim()));
     if (movimientos.length === 0 && (!esCompleto || !saldoAnterior)) {
       message.warning("No hay movimientos del tipo seleccionado para imprimir en este período");
       return;
@@ -1331,7 +1336,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
     ========================= */
     let ry = doc.lastAutoTable.finalY + 12;
 
-    if (ry + (esCompleto ? 60 : 24) > pageHeight - 20) {
+    if (ry + (esCompleto ? 60 : 18 + filasTotales.length * 6) > pageHeight - 20) {
       doc.addPage();
       ry = 20;
     }
@@ -1341,7 +1346,11 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
 
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text(esCompleto ? "Resumen de cuenta" : `Total de ${etiqueta.toLowerCase()}`, pageWidth / 2, ry, { align: "center" });
+    doc.text(
+      esCompleto ? "Resumen de cuenta"
+        : filasTotales.length === 1 ? `Total de ${etiqueta.toLowerCase()}` : "Totales del filtro",
+      pageWidth / 2, ry, { align: "center" }
+    );
 
     ry += 8;
     doc.setFontSize(10);
@@ -1367,10 +1376,11 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         doc.setFontSize(10);
         doc.setTextColor(0);
       }
-      row("Ventas", `+$${totales.Venta.toLocaleString("es-AR")}`);
-      row("Pagos", `-$${totales.Entrega.toLocaleString("es-AR")}`);
-      row("Notas de crédito", `-$${totales["Nota de Crédito"].toLocaleString("es-AR")}`);
-
+    }
+    for (const fila of filasTotales) {
+      row(fila.etiqueta, `${fila.signo}$${fila.total.toLocaleString("es-AR")}`);
+    }
+    if (esCompleto) {
       /* =========================
          SALDO PENDIENTE (centrado)
       ========================= */
@@ -1387,8 +1397,6 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         ry + 9,
         { align: "right" }
       );
-    } else {
-      row(etiqueta, `${signo}$${totalSeleccionado.toLocaleString("es-AR")}`);
     }
 
     /* =========================
@@ -1458,7 +1466,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
         </div>
         <div className="px-4 py-4 space-y-4">
           <p className="text-sm text-gray-600">
-            El resumen para imprimir usa el tipo de movimiento y el rango de fechas seleccionados.
+            El PDF incluye los movimientos visibles según tipo, búsqueda y rango de fechas.
           </p>
           {/* Primera fila: Filtros principales */}
           <div className="flex flex-col sm:flex-row flex-wrap gap-2 md:gap-4 items-start sm:items-center">
@@ -1545,6 +1553,26 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
             )}
           </div>
 
+          {hasBuscado && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <span className="text-sm font-medium text-gray-700">Qué imprimir</span>
+              <Segmented
+                value={filtroTipoMov}
+                onChange={(value) => {
+                  setFiltroTipoMov(value);
+                  setPageMovimientosMobile(1);
+                }}
+                options={[
+                  { label: "Todos", value: "todos" },
+                  { label: "Ventas", value: "Venta" },
+                  { label: "Pagos", value: "Entrega" },
+                  { label: "N/C", value: "Nota de Crédito" },
+                ]}
+                block={isMobile}
+              />
+            </div>
+          )}
+
           {/* Segunda fila: Botones de acción - Solo se muestran después de buscar */}
           {hasBuscado && (
             <div className="flex flex-col sm:flex-row flex-wrap gap-2 pt-2 border-t border-gray-200">
@@ -1578,7 +1606,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
                 type="primary"
                 disabled={!resumenListo}
               >
-                Imprimir
+                {textoImprimir}
               </Button>
             </div>
           )}
@@ -1648,20 +1676,6 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
           <h2 className="text-lg font-semibold text-gray-900">Movimientos</h2>
           {hasBuscado && (
             <div className="flex flex-col gap-2 mt-3 sm:flex-row sm:items-center">
-              <Segmented
-                value={filtroTipoMov}
-                onChange={(v) => {
-                  setFiltroTipoMov(v);
-                  setPageMovimientosMobile(1);
-                }}
-                options={[
-                  { label: "Todos", value: "todos" },
-                  { label: "Ventas", value: "Venta" },
-                  { label: "Pagos", value: "Entrega" },
-                  { label: "N/C", value: "Nota de Crédito" },
-                ]}
-                block={isMobile}
-              />
               <Input
                 allowClear
                 prefix={<SearchOutlined style={{ color: "#1890ff" }} />}
@@ -2315,7 +2329,7 @@ const VentasPorNegocio = ({ preselectNegocioId }) => {
               disabled={!resumenListo}
               style={{ width: "100%" }}
             >
-              Imprimir
+              {textoImprimir}
             </Button>
           </div>
         ) : (

@@ -20,7 +20,7 @@ test("cada impresión por tipo incluye solo sus movimientos y su total", () => {
     assert.equal(resumen.esCompleto, false);
     assert.equal(resumen.movimientos.length, cantidad);
     assert.ok(resumen.movimientos.every((item) => item.tipo === tipo));
-    assert.equal(resumen.totalSeleccionado, total);
+    assert.deepEqual(resumen.filasTotales.map((fila) => [fila.tipo, fila.total]), [[tipo, total]]);
   }
 });
 
@@ -33,4 +33,13 @@ test("Todos reúne los tres tipos con totales independientes y sin duplicar sald
     Entrega: 35,
     "Nota de Crédito": 15,
   });
+  assert.equal(resumen.filasTotales.length, 3);
+});
+
+test("la búsqueda que deja solo ventas imprime un único total y no el estado de cuenta", () => {
+  const visibles = transacciones.filter((item) => item.tipo === "Venta");
+  const resumen = prepararResumenImpresion(visibles, "todos", true);
+  assert.equal(resumen.esCompleto, false);
+  assert.equal(resumen.etiqueta, "Ventas");
+  assert.deepEqual(resumen.filasTotales.map((fila) => [fila.tipo, fila.total]), [["Venta", 200]]);
 });
